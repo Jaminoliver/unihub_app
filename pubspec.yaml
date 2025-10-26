@@ -1,0 +1,55 @@
+name: unihub
+description: "A campus-based e-commerce platform for university students in Africa."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.9.0
+
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # UI + Icons
+  cupertino_icons: ^1.0.8
+  flutter_svg: ^2.0.9
+  google_fonts: ^6.2.1
+  cached_network_image: ^3.2.4
+  carousel_slider: ^5.1.1
+  intl: ^0.18.1
+
+
+  # State management
+  provider: ^6.1.2
+
+  # Future (we'll add these later, keep commented for now)
+  # supabase_flutter: ^2.5.8
+  # intl: ^0.19.0
+  # shared_preferences: ^2.3.2
+  # flutter_secure_storage: ^9.2.2
+  # paystack_payment: (we’ll add later for payments)
+  # flutterwave_standard: (we’ll add later for payments)
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+
+  # ✅ Assets section
+  assets:
+    - assets/images/
+    - assets/icons/
+    - assets/fonts/
+
+  fonts:
+    - family: Poppins
+      fonts:
+        - asset: assets/fonts/Poppins-Regular.ttf
+        - asset: assets/fonts/Poppins-Medium.ttf
+        - asset: assets/fonts/Poppins-SemiBold.ttf
+        - asset: assets/fonts/Poppins-Bold.ttf
