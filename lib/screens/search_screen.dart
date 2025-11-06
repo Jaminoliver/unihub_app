@@ -10,11 +10,13 @@ import './product_details_screen.dart';
 class SearchScreen extends StatefulWidget {
   final String? universityId;
   final String universityName;
+  final String state; 
 
   const SearchScreen({
     super.key,
     this.universityId,
     required this.universityName,
+    required this.state,
   });
 
   @override
@@ -113,7 +115,8 @@ class _SearchScreenState extends State<SearchScreen> {
     try {
       final products = await _productService.getAllProducts(
         universityId: widget.universityId,
-        limit: 10,
+        state: widget.state,
+        limit: 20,
       );
 
       final suggestions = products.map((p) => p.name).toSet().take(5).toList();
@@ -127,36 +130,49 @@ class _SearchScreenState extends State<SearchScreen> {
   }
 
   // ✅ NEW: Autocomplete function
-  void _handleTextChange(String query) {
+  Future<void> _handleTextChange(String query) async {
+  if (query.trim().isEmpty) {
     setState(() {
-      if (query.trim().isEmpty) {
-        _showAutocomplete = false;
-        _autocompleteResults = [];
-      } else {
-        _showAutocomplete = true;
-        // Filter suggestions based on what user is typing
-        _autocompleteResults = _suggestions
-            .where(
-              (suggestion) =>
-                  suggestion.toLowerCase().contains(query.toLowerCase()),
-            )
-            .take(5)
-            .toList();
+      _showAutocomplete = false;
+      _autocompleteResults = [];
+    });
+    return;
+  }
 
-        // Also include recent searches that match
-        final matchingRecent = _recentSearches
-            .where(
-              (search) =>
-                  search.toLowerCase().contains(query.toLowerCase()) &&
-                  !_autocompleteResults.contains(search),
-            )
-            .take(3)
-            .toList();
+  setState(() {
+    _showAutocomplete = true;
+    _isLoadingAutocomplete = true;
+  });
 
-        _autocompleteResults.addAll(matchingRecent);
-      }
+  try {
+    // ✅ Call the NEW method from ProductService
+    final suggestions = await _productService.getSearchSuggestions(
+      partialQuery: query,
+      state: widget.state,
+      universityId: widget.universityId,
+      limit: 8,
+    );
+
+    // Also include matching recent searches
+    final matchingRecent = _recentSearches
+        .where((search) =>
+            search.toLowerCase().contains(query.toLowerCase()) &&
+            !suggestions.contains(search))
+        .take(3)
+        .toList();
+
+    setState(() {
+      _autocompleteResults = [...suggestions, ...matchingRecent];
+      _isLoadingAutocomplete = false;
+    });
+  } catch (e) {
+    debugPrint('Error loading autocomplete: $e');
+    setState(() {
+      _autocompleteResults = [];
+      _isLoadingAutocomplete = false;
     });
   }
+}
 
   Future<void> _performSearch(String query) async {
     if (query.trim().isEmpty) return;
@@ -174,7 +190,8 @@ class _SearchScreenState extends State<SearchScreen> {
       final results = await _productService.searchProducts(
         query,
         universityId: widget.universityId,
-        limit: 50,
+        state: widget.state,
+        limit: 100,
       );
 
       setState(() {
@@ -189,6 +206,9 @@ class _SearchScreenState extends State<SearchScreen> {
       });
     }
   }
+  
+  
+
 
   void _clearSearch() {
     setState(() {
@@ -302,24 +322,49 @@ class _SearchScreenState extends State<SearchScreen> {
           ),
 
           // ✅ NEW: Autocomplete Dropdown
-          if (_showAutocomplete &&
-              _autocompleteResults.isNotEmpty &&
-              !_hasSearched)
-            SliverToBoxAdapter(
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(
-                  color: AppColors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.08),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
+          if (_showAutocomplete && !_hasSearched)  // ⬅️ Remove the isEmpty check
+  SliverToBoxAdapter(
+    child: Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: _isLoadingAutocomplete  // ⬅️ ADD THIS CONDITION
+          ? Padding(
+              padding: const EdgeInsets.all(16),
+              child: Center(
+                child: SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppColors.primary,
+                  ),
                 ),
-                child: Column(
+              ),
+            )
+          : _autocompleteResults.isEmpty  // ⬅️ ADD THIS CONDITION
+              ? Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Text(
+                    'No suggestions found',
+                    textAlign: TextAlign.center,
+                    style: AppTextStyles.body.copyWith(
+                      color: AppColors.textLight,
+                      fontSize: 12,
+                    ),
+                  ),
+                )
+              : Column(
+                
                   children: _autocompleteResults.map((result) {
                     final isFromRecent = _recentSearches.contains(result);
                     return ListTile(

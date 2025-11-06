@@ -8,6 +8,9 @@ import '../services/product_service.dart';
 import '../services/reviews_service.dart';
 import 'dart:async';
 import 'dart:ui';
+// --- ADDED ---
+import '../services/cart_service.dart';
+import '../services/auth_service.dart';
 
 class ProductDetailsScreen extends StatefulWidget {
   // Can accept either a full product object or just an ID
@@ -15,10 +18,10 @@ class ProductDetailsScreen extends StatefulWidget {
   final String? productId;
 
   const ProductDetailsScreen({super.key, this.product, this.productId})
-    : assert(
-        product != null || productId != null,
-        'Either product or productId must be provided',
-      );
+      : assert(
+          product != null || productId != null,
+          'Either product or productId must be provided',
+        );
 
   @override
   State<ProductDetailsScreen> createState() => _ProductDetailsScreenState();
@@ -27,6 +30,10 @@ class ProductDetailsScreen extends StatefulWidget {
 class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   final ProductService _productService = ProductService();
   final ReviewService _reviewService = ReviewService();
+  
+  // --- ADDED ---
+  final CartService _cartService = CartService();
+  final AuthService _authService = AuthService();
 
   // State variables
   ProductModel? _product;
@@ -42,9 +49,12 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   // Flash sale countdown
   Timer? _countdownTimer;
   Duration? _flashSaleTimeLeft;
+  
+  // --- ADDED ---
+  bool _isAddingToCart = false; // To show a loading spinner on the button
 
-  // Mock cart count (will be connected to CartService later)
-  int _cartItemCount = 3;
+  // --- UPDATED --- (Changed from 3 to 0)
+  int _cartItemCount = 0; 
 
   @override
   void initState() {
@@ -90,6 +100,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
       // Load reviews
       _loadReviews();
+      
+      // --- ADDED ---
+      _loadCartCount();
 
       setState(() {
         _isLoading = false;
@@ -126,6 +139,31 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       });
     }
   }
+
+  // --- ADDED --- (New method to get real cart count)
+  Future<void> _loadCartCount() async {
+    try {
+      final userId = _authService.currentUserId;
+      if (userId == null || !mounted) return;
+
+      // --- FIX: Use getCartItems and sum quantities ---
+      final items = await _cartService.getCartItems(userId);
+      int count = 0;
+      if (items.isNotEmpty) {
+        // This sums the QUANTITY of all items, not just the number of items
+        count = items.fold(0, (prev, item) => prev + item.quantity);
+      }
+      
+      if (mounted) {
+        setState(() {
+          _cartItemCount = count;
+        });
+      }
+    } catch (e) {
+      debugPrint('Error loading cart count: $e');
+    }
+  }
+
 
   void _startFlashSaleCountdown(DateTime endTime) {
     _flashSaleTimeLeft = endTime.difference(DateTime.now());
@@ -319,6 +357,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
           ),
 
           // Bottom Action Bar
+          // --- UPDATED --- (This method is now fully replaced)
           _buildBottomActionBar(),
         ],
       ),
@@ -1052,13 +1091,14 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     );
   }
 
+  // --- FULLY REPLACED ---
   Widget _buildBottomActionBar() {
     return Positioned(
       bottom: 0,
       left: 0,
       right: 0,
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.of(context).padding.bottom), // <-- Add safe area padding
         decoration: BoxDecoration(
           color: Colors.white,
           boxShadow: [
@@ -1126,33 +1166,55 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             // Add to Cart Button
             Expanded(
               child: ElevatedButton.icon(
-                onPressed: _product?.isAvailable == true
-                    ? () {
-                        setState(() {
-                          _cartItemCount++;
-                        });
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Row(
-                              children: [
-                                Icon(
-                                  Icons.check_circle,
-                                  color: Colors.white,
-                                  size: 20,
+                onPressed: (_product?.isAvailable == true && !_isAddingToCart)
+                    ? () async {
+                        setState(() => _isAddingToCart = true);
+                        try {
+                          final userId = _authService.currentUserId;
+                          if (userId == null) {
+                            throw Exception('You must be logged in');
+                          }
+                          
+                          await _cartService.addToCart(
+                            userId: userId,
+                            productId: _product!.id,
+                          );
+
+                          await _loadCartCount(); // Refresh count
+
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Row(
+                                  children: [
+                                    Icon(Icons.check_circle, color: Colors.white, size: 20),
+                                    const SizedBox(width: 12),
+                                    Text('"${_product!.name}" added to cart!'),
+                                  ],
                                 ),
-                                const SizedBox(width: 12),
-                                Text('Added to cart!'),
-                              ],
-                            ),
-                            duration: Duration(seconds: 2),
-                            backgroundColor: Color(0xFF10B981),
-                            behavior: SnackBarBehavior.floating,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                          ),
-                        );
-                        // TODO: Add to cart service
+                                duration: Duration(seconds: 2),
+                                backgroundColor: Color(0xFF10B981),
+                                behavior: SnackBarBehavior.floating,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                              ),
+                            );
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Failed to add to cart: ${e.toString()}'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                          }
+                        } finally {
+                          if (mounted) {
+                            setState(() => _isAddingToCart = false);
+                          }
+                        }
                       }
                     : null,
                 style: ElevatedButton.styleFrom(
@@ -1165,7 +1227,16 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                   elevation: 2,
                   disabledBackgroundColor: Colors.grey[300],
                 ),
-                icon: Icon(Icons.add_shopping_cart),
+                icon: _isAddingToCart
+                    ? Container(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : Icon(Icons.add_shopping_cart),
                 label: Text(
                   _product?.isAvailable == true
                       ? 'Add to Cart'
@@ -1179,7 +1250,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       ),
     );
   }
-
+  
   Widget _buildDetailRow(String label, String value) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1217,7 +1288,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
           color: Colors.white,
           borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
         ),
-        padding: const EdgeInsets.all(20),
+        // --- THIS IS THE FIX ---
+        // Removed 'const' from the padding to allow dynamic value
+        padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.of(context).padding.bottom),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

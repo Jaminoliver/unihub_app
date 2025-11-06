@@ -87,11 +87,40 @@ class BottomNavBar extends StatefulWidget {
 class _BottomNavBarState extends State<BottomNavBar> {
   late int _selectedIndex;
 
+  // --- ADDED ---
+  // Create a scroll controller for the Home screen
+  final ScrollController _homeScrollController = ScrollController();
+  
+  // --- UPDATED ---
+  // Removed 'const' and made it late-initialized in initState
+  late List<Widget> _pages;
+
   @override
   void initState() {
     super.initState();
     _selectedIndex = widget.initialIndex;
     _checkAuth();
+
+    // --- ADDED ---
+    // Initialize the pages list here, passing the controller to HomeScreen
+    _pages = [
+      HomeScreen(
+        key: const PageStorageKey('homeScreen'), // Remembers scroll position
+        scrollController: _homeScrollController,
+      ),
+      const CategoriesScreen(
+        key: PageStorageKey('categoriesScreen'),
+      ),
+      const CartScreen(
+        key: PageStorageKey('cartScreen'),
+      ),
+      const OrdersScreen(
+        key: PageStorageKey('ordersScreen'),
+      ),
+      const ProfileScreen(
+        key: PageStorageKey('profileScreen'),
+      ),
+    ];
   }
 
   Future<void> _checkAuth() async {
@@ -101,16 +130,23 @@ class _BottomNavBarState extends State<BottomNavBar> {
     }
   }
 
-  final List<Widget> _pages = const [
-    HomeScreen(), // 0
-    CategoriesScreen(), // 1
-    CartScreen(), // 2
-    OrdersScreen(), // 3
-    ProfileScreen(), // 4
-  ];
-
+  // --- UPDATED ---
+  // This method now handles the "scroll to top" logic
   void _onItemTapped(int index) {
-    setState(() => _selectedIndex = index);
+    // Check if the user is *re-tapping* the Home icon (index 0)
+    if (index == 0 && _selectedIndex == 0) {
+      // If we are already on the Home tab, scroll to top
+      if (_homeScrollController.hasClients) {
+        _homeScrollController.animateTo(
+          0.0, // Scroll to the top
+          duration: const Duration(milliseconds: 500),
+          curve: Curves.easeInOut,
+        );
+      }
+    } else {
+      // Otherwise, just switch tabs
+      setState(() => _selectedIndex = index);
+    }
   }
 
   @override
