@@ -72,7 +72,7 @@ class HomeService {
           .select('''
             *,
             categories(name),
-            profiles!seller_id(full_name, profile_image_url),
+            sellers(full_name, business_name)
             universities(name, short_name)
           ''')
           .eq('is_available', true)
@@ -107,7 +107,7 @@ class HomeService {
           .select('''
             *,
             categories(name),
-            profiles!seller_id(full_name, profile_image_url),
+            sellers(full_name, business_name)
             universities(name, short_name)
           ''')
           .eq('is_available', true)
@@ -141,7 +141,7 @@ class HomeService {
           .select('''
             *,
             categories(name),
-            profiles!seller_id(full_name, profile_image_url),
+            sellers(full_name, business_name)
             universities(name, short_name)
           ''')
           .eq('is_available', true)
@@ -175,7 +175,7 @@ class HomeService {
           .select('''
             *,
             categories(name),
-            profiles!seller_id(full_name, profile_image_url),
+            sellers(full_name, business_name)
             universities(name, short_name)
           ''')
           .eq('is_available', true)
@@ -210,7 +210,7 @@ class HomeService {
           .select('''
             *,
             categories(name),
-            profiles!seller_id(full_name, profile_image_url),
+            sellers(full_name, business_name)
             universities(name, short_name)
           ''')
           .eq('is_available', true);
@@ -271,14 +271,13 @@ class HomeService {
   /// Helper: Map product with nested data
   ProductModel _mapProduct(Map<String, dynamic> json) {
     final category = json['categories'] as Map<String, dynamic>?;
-    final seller = json['profiles'] as Map<String, dynamic>?;
+    final seller = json['sellers'] as Map<String, dynamic>?;
     final university = json['universities'] as Map<String, dynamic>?;
 
     return ProductModel.fromJson({
       ...json,
       'category_name': category?['name'],
-      'seller_name': seller?['full_name'],
-      'seller_image_url': seller?['profile_image_url'],
+      'seller_name': seller?['business_name'] ?? seller?['full_name'],
       'university_name': university?['short_name'] ?? university?['name'],
     });
   }
