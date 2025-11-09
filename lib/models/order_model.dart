@@ -9,9 +9,8 @@ class OrderModel {
   final double unitPrice;
   final double totalAmount;
   final String paymentMethod; // 'full', 'half', 'pay_on_delivery'
-  final String paymentStatus; // 'pending', 'paid', 'refunded', 'failed'
-  final String
-  orderStatus; // 'pending', 'confirmed', 'shipped', 'delivered', 'cancelled', 'refunded'
+  final String paymentStatus; // 'pending', 'completed', 'failed', 'refunded'
+  final String orderStatus; // 'pending', 'confirmed', 'shipped', 'delivered', 'cancelled', 'refunded'
   final String? deliveryAddressId;
   final String? deliveryCode;
   final DateTime? deliveryConfirmedAt;
@@ -22,6 +21,11 @@ class OrderModel {
   final String? notes;
   final DateTime createdAt;
   final DateTime? updatedAt;
+  
+  // New payment tracking fields
+  final String? paymentReference; // Paystack payment reference
+  final int? transactionId; // Paystack transaction ID
+  final DateTime? paymentVerifiedAt; // When payment was verified
 
   // Joined data
   final String? productName;
@@ -52,6 +56,9 @@ class OrderModel {
     this.notes,
     required this.createdAt,
     this.updatedAt,
+    this.paymentReference,
+    this.transactionId,
+    this.paymentVerifiedAt,
     this.productName,
     this.productImageUrl,
     this.sellerName,
@@ -94,6 +101,13 @@ class OrderModel {
       updatedAt: json['updated_at'] != null
           ? DateTime.parse(json['updated_at'] as String)
           : null,
+      // New payment tracking fields
+      paymentReference: json['payment_reference'] as String?,
+      transactionId: json['transaction_id'] as int?,
+      paymentVerifiedAt: json['payment_verified_at'] != null
+          ? DateTime.parse(json['payment_verified_at'] as String)
+          : null,
+      // Joined data
       productName: product?['name'] as String?,
       productImageUrl:
           product?['image_urls'] != null &&
@@ -129,6 +143,9 @@ class OrderModel {
       'notes': notes,
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
+      'payment_reference': paymentReference,
+      'transaction_id': transactionId,
+      'payment_verified_at': paymentVerifiedAt?.toIso8601String(),
     };
   }
 
@@ -146,6 +163,12 @@ class OrderModel {
   bool get isDelivered => orderStatus == 'delivered';
   bool get isCancelled => orderStatus == 'cancelled';
   bool get isRefunded => orderStatus == 'refunded';
+
+  // Payment status helpers
+  bool get isPaymentPending => paymentStatus == 'pending';
+  bool get isPaymentCompleted => paymentStatus == 'completed';
+  bool get isPaymentFailed => paymentStatus == 'failed';
+  bool get isPaymentRefunded => paymentStatus == 'refunded';
 
   // Payment method helpers
   bool get isFullPayment => paymentMethod == 'full';
@@ -167,6 +190,22 @@ class OrderModel {
         return 'Cancelled';
       case 'refunded':
         return 'Refunded';
+      default:
+        return 'Unknown';
+    }
+  }
+
+  // Payment status display text
+  String get paymentStatusDisplayText {
+    switch (paymentStatus) {
+      case 'pending':
+        return 'Payment Pending';
+      case 'completed':
+        return 'Payment Completed';
+      case 'failed':
+        return 'Payment Failed';
+      case 'refunded':
+        return 'Payment Refunded';
       default:
         return 'Unknown';
     }

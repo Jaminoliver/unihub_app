@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_paystack/flutter_paystack.dart';
+
 import 'screens/splash_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/categories_screen.dart';
@@ -17,11 +19,19 @@ const supabaseUrl = 'https://owuogoooqdfbdnbkdyeo.supabase.co';
 const supabaseAnonKey =
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im93dW9nb29vcWRmYmRuYmtkeWVvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE5Mzg2MDYsImV4cCI6MjA3NzUxNDYwNn0.g6I65rY5hhb8CnH38-7_fEsB6jPQpWy_QcqVVpIyDH8';
 
+// Global Paystack plugin instance
+final paystackPlugin = PaystackPlugin();
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize Supabase
   await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
+
+  // Initialize Paystack using the global instance
+  await paystackPlugin.initialize(
+    publicKey: 'pk_test_611362c58ad79b5446897d88ef3d2f9c8b5b88d6',
+  );
 
   // Set system UI overlay style
   SystemChrome.setSystemUIOverlayStyle(
@@ -34,7 +44,7 @@ void main() async {
   runApp(const UniHubApp());
 }
 
-// Global Supabase client
+// Global Supabase client (moved AFTER main function)
 final supabase = Supabase.instance.client;
 
 class UniHubApp extends StatelessWidget {
@@ -87,11 +97,9 @@ class BottomNavBar extends StatefulWidget {
 class _BottomNavBarState extends State<BottomNavBar> {
   late int _selectedIndex;
 
-  // --- ADDED ---
   // Create a scroll controller for the Home screen
   final ScrollController _homeScrollController = ScrollController();
   
-  // --- UPDATED ---
   // Removed 'const' and made it late-initialized in initState
   late List<Widget> _pages;
 
@@ -101,7 +109,6 @@ class _BottomNavBarState extends State<BottomNavBar> {
     _selectedIndex = widget.initialIndex;
     _checkAuth();
 
-    // --- ADDED ---
     // Initialize the pages list here, passing the controller to HomeScreen
     _pages = [
       HomeScreen(
@@ -130,7 +137,6 @@ class _BottomNavBarState extends State<BottomNavBar> {
     }
   }
 
-  // --- UPDATED ---
   // This method now handles the "scroll to top" logic
   void _onItemTapped(int index) {
     // Check if the user is *re-tapping* the Home icon (index 0)

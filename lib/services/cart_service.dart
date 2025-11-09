@@ -1,5 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../models/cart_model.dart'; // Assuming you have this model
+import '../models/cart_model.dart';
 
 /// Cart Service - Manages shopping cart operations
 class CartService {
@@ -12,29 +12,51 @@ class CartService {
           .from('cart')
           .select('''
             *,
-            products(
+            products!inner(
               *,
               categories(name),
-              profiles!seller_id(full_name, profile_image_url),
               universities(name, short_name)
             )
           ''')
           .eq('user_id', userId)
           .order('created_at', ascending: false);
 
-      return (response as List)
-          .map((json) => CartModel.fromJson(json as Map<String, dynamic>))
+      // Fetch seller info separately for each product
+      final cartItems = (response as List).map((json) {
+        return json as Map<String, dynamic>;
+      }).toList();
+
+      // Enrich with seller data from sellers table
+      for (var item in cartItems) {
+        if (item['products'] != null && item['products']['seller_id'] != null) {
+          try {
+            final sellerResponse = await _supabase
+                .from('sellers')
+                .select('id, business_name, user_id')
+                .eq('id', item['products']['seller_id'])
+                .maybeSingle();
+            
+            if (sellerResponse != null) {
+              item['products']['seller'] = sellerResponse;
+            }
+          } catch (e) {
+            print('Error fetching seller for product: $e');
+          }
+        }
+      }
+
+      return cartItems
+          .map((json) => CartModel.fromJson(json))
           .toList();
     } catch (e) {
       print('Error fetching cart items: $e');
-      rethrow; // Throw error to be caught by UI
+      rethrow;
     }
   }
 
   /// Get cart item count
   Future<int> getCartCount(String userId) async {
     try {
-      // FIX 1: Use the .count() modifier for efficiency
       final response = await _supabase
           .from('cart')
           .select('id')
@@ -86,11 +108,27 @@ class CartService {
             products(
               *,
               categories(name),
-              profiles!seller_id(full_name, profile_image_url),
               universities(name, short_name)
             )
           ''')
           .single();
+
+      // Fetch seller info separately
+      if (response['products'] != null && response['products']['seller_id'] != null) {
+        try {
+          final sellerResponse = await _supabase
+              .from('sellers')
+              .select('id, business_name, user_id')
+              .eq('id', response['products']['seller_id'])
+              .maybeSingle();
+          
+          if (sellerResponse != null) {
+            response['products']['seller'] = sellerResponse;
+          }
+        } catch (e) {
+          print('Error fetching seller: $e');
+        }
+      }
 
       return CartModel.fromJson(response);
     } catch (e) {
@@ -122,11 +160,27 @@ class CartService {
             products(
               *,
               categories(name),
-              profiles!seller_id(full_name, profile_image_url),
               universities(name, short_name)
             )
           ''')
           .single();
+
+      // Fetch seller info separately
+      if (response['products'] != null && response['products']['seller_id'] != null) {
+        try {
+          final sellerResponse = await _supabase
+              .from('sellers')
+              .select('id, business_name, user_id')
+              .eq('id', response['products']['seller_id'])
+              .maybeSingle();
+          
+          if (sellerResponse != null) {
+            response['products']['seller'] = sellerResponse;
+          }
+        } catch (e) {
+          print('Error fetching seller: $e');
+        }
+      }
 
       return CartModel.fromJson(response);
     } catch (e) {
@@ -162,17 +216,9 @@ class CartService {
     try {
       final cartItems = await getCartItems(userId);
 
-      // FIX 2: Use a for-loop to handle the 'Future<double>' from item.totalPrice
       double total = 0.0;
       for (final item in cartItems) {
-        // Assuming item.totalPrice is a getter that might be async
-        // If it's not async, you can just use: total += item.totalPrice;
-        // But your error suggested it was a FutureOr<double>.
-        // If `totalPrice` is just `price * quantity` in your model,
-        // make sure it's not an `async` getter.
-        // For this example, I'll assume it's a simple double getter:
-        total += item
-            .totalPrice; // If totalPrice is `double get totalPrice => price * quantity;`
+        total += item.totalPrice;
       }
       return total;
     } catch (e) {
@@ -214,7 +260,6 @@ class CartService {
             products(
               *,
               categories(name),
-              profiles!seller_id(full_name, profile_image_url),
               universities(name, short_name)
             )
           ''')
@@ -222,7 +267,26 @@ class CartService {
           .eq('product_id', productId)
           .maybeSingle();
 
-      return response != null ? CartModel.fromJson(response) : null;
+      if (response == null) return null;
+
+      // Fetch seller info separately
+      if (response['products'] != null && response['products']['seller_id'] != null) {
+        try {
+          final sellerResponse = await _supabase
+              .from('sellers')
+              .select('id, business_name, user_id')
+              .eq('id', response['products']['seller_id'])
+              .maybeSingle();
+          
+          if (sellerResponse != null) {
+            response['products']['seller'] = sellerResponse;
+          }
+        } catch (e) {
+          print('Error fetching seller: $e');
+        }
+      }
+
+      return CartModel.fromJson(response);
     } catch (e) {
       print('Error fetching cart item: $e');
       return null;

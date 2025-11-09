@@ -35,7 +35,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   final _homeService = HomeService();
   final _productService = ProductService();
   final _authService = AuthService();
-  final _cartService = CartService();
+  final CartService _cartService = CartService();
   final _universityService = UniversityService();
   final _categoryService = CategoryService();
   

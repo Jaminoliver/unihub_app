@@ -1,65 +1,72 @@
 import 'package:flutter/material.dart';
 import 'package:carousel_slider/carousel_slider.dart';
-import '../constants/app_colors.dart';
-import '../constants/app_text_styles.dart';
 import '../models/product_model.dart';
 import '../models/review_model.dart';
 import '../services/product_service.dart';
 import '../services/reviews_service.dart';
-import 'dart:async';
-import 'dart:ui';
-// --- ADDED ---
 import '../services/cart_service.dart';
 import '../services/auth_service.dart';
+import 'dart:async';
+import 'dart:ui';
+import 'dart:convert';
+
+// Modern Color Palette
+class AppTheme {
+  static const orangeStart = Color(0xFFFF6B35);
+  static const orangeEnd = Color(0xFFFF8C42);
+  static const navyBlue = Color(0xFF1E3A8A);
+  static const slateStart = Color(0xFF64748B);
+  static const slateEnd = Color(0xFF475569);
+  static const white = Colors.white;
+  static const ashGray = Color(0xFFF5F5F7);
+  static const textDark = Color(0xFF1F2937);
+  static const textLight = Color(0xFF6B7280);
+  
+  static final gradient = LinearGradient(
+    colors: [orangeStart, orangeEnd],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+  
+  static final slateGradient = LinearGradient(
+    colors: [slateStart, slateEnd],
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+  );
+}
 
 class ProductDetailsScreen extends StatefulWidget {
-  // Can accept either a full product object or just an ID
   final ProductModel? product;
   final String? productId;
 
   const ProductDetailsScreen({super.key, this.product, this.productId})
-      : assert(
-          product != null || productId != null,
-          'Either product or productId must be provided',
-        );
+      : assert(product != null || productId != null);
 
   @override
   State<ProductDetailsScreen> createState() => _ProductDetailsScreenState();
 }
 
 class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
-  final ProductService _productService = ProductService();
-  final ReviewService _reviewService = ReviewService();
-  
-  // --- ADDED ---
-  final CartService _cartService = CartService();
-  final AuthService _authService = AuthService();
+  final _productService = ProductService();
+  final _reviewService = ReviewService();
+  final _cartService = CartService();
+  final _authService = AuthService();
 
-  // State variables
   ProductModel? _product;
   List<ReviewModel> _reviews = [];
   bool _isLoading = true;
-  bool _isLoadingReviews = true;
-  String? _error;
-
-  int _currentImageIndex = 0;
   bool _isFavorite = false;
-  bool _isProductDetailsExpanded = false;
-
-  // Flash sale countdown
+  int _currentImageIndex = 0;
+  int _cartItemCount = 0;
+  bool _isAddingToCart = false;
+  bool _showSuccessMessage = false;
   Timer? _countdownTimer;
   Duration? _flashSaleTimeLeft;
-  
-  // --- ADDED ---
-  bool _isAddingToCart = false; // To show a loading spinner on the button
-
-  // --- UPDATED --- (Changed from 3 to 0)
-  int _cartItemCount = 0; 
 
   @override
   void initState() {
     super.initState();
-    _loadProductData();
+    _loadData();
   }
 
   @override
@@ -68,980 +75,853 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     super.dispose();
   }
 
-  Future<void> _loadProductData() async {
+  Future<void> _loadData() async {
     try {
-      setState(() {
-        _isLoading = true;
-        _error = null;
-      });
-
-      // If we have a product object, use it; otherwise fetch by ID
-      if (widget.product != null) {
-        _product = widget.product;
-      } else if (widget.productId != null) {
-        _product = await _productService.getProductById(widget.productId!);
-      }
-
-      if (_product == null) {
-        setState(() {
-          _error = 'Product not found';
-          _isLoading = false;
-        });
-        return;
-      }
-
-      // Increment view count
-      _productService.incrementViewCount(_product!.id);
-
-      // Start flash sale countdown if applicable
-      if (_product!.isFlashSale && _product!.flashSaleEndsAt != null) {
-        _startFlashSaleCountdown(_product!.flashSaleEndsAt!);
-      }
-
-      // Load reviews
-      _loadReviews();
+      _product = widget.product ?? await _productService.getProductById(widget.productId!);
+      if (_product == null) throw Exception('Product not found');
       
-      // --- ADDED ---
+      _productService.incrementViewCount(_product!.id);
+      if (_product!.isFlashSale && _product!.flashSaleEndsAt != null) {
+        _startCountdown(_product!.flashSaleEndsAt!);
+      }
+      
+      _loadReviews();
       _loadCartCount();
-
-      setState(() {
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
     } catch (e) {
-      setState(() {
-        _error = 'Failed to load product: $e';
-        _isLoading = false;
-      });
+      setState(() => _isLoading = false);
+      if (mounted) Navigator.pop(context);
     }
   }
 
   Future<void> _loadReviews() async {
-    if (_product == null) return;
-
-    try {
-      setState(() {
-        _isLoadingReviews = true;
-      });
-
-      final reviews = await _reviewService.getProductReviews(
-        _product!.id,
-        limit: 10,
-      );
-
-      setState(() {
-        _reviews = reviews;
-        _isLoadingReviews = false;
-      });
-    } catch (e) {
-      print('Error loading reviews: $e');
-      setState(() {
-        _isLoadingReviews = false;
-      });
-    }
+    final reviews = await _reviewService.getProductReviews(_product!.id, limit: 10);
+    if (mounted) setState(() => _reviews = reviews);
   }
 
-  // --- ADDED --- (New method to get real cart count)
   Future<void> _loadCartCount() async {
+    final userId = _authService.currentUserId;
+    if (userId == null) return;
+    final items = await _cartService.getCartItems(userId);
+    if (mounted) setState(() => _cartItemCount = items.fold(0, (p, i) => p + i.quantity));
+  }
+
+  void _startCountdown(DateTime endTime) {
+    _flashSaleTimeLeft = endTime.difference(DateTime.now());
+    _countdownTimer = Timer.periodic(Duration(seconds: 1), (timer) {
+      if (!mounted) return timer.cancel();
+      final newTime = endTime.difference(DateTime.now());
+      setState(() => _flashSaleTimeLeft = newTime.isNegative ? Duration.zero : newTime);
+      if (newTime.isNegative) timer.cancel();
+    });
+  }
+
+  Future<void> _addToCart() async {
+    if (_isAddingToCart) return;
+    setState(() => _isAddingToCart = true);
     try {
       final userId = _authService.currentUserId;
-      if (userId == null || !mounted) return;
-
-      // --- FIX: Use getCartItems and sum quantities ---
-      final items = await _cartService.getCartItems(userId);
-      int count = 0;
-      if (items.isNotEmpty) {
-        // This sums the QUANTITY of all items, not just the number of items
-        count = items.fold(0, (prev, item) => prev + item.quantity);
-      }
+      if (userId == null) throw Exception('Login required');
+      await _cartService.addToCart(userId: userId, productId: _product!.id);
+      await _loadCartCount();
       
-      if (mounted) {
-        setState(() {
-          _cartItemCount = count;
-        });
-      }
+      // Show success animation
+      setState(() {
+        _isAddingToCart = false;
+        _showSuccessMessage = true;
+      });
+      
+      // Hide success message after 2 seconds
+      Future.delayed(Duration(seconds: 2), () {
+        if (mounted) setState(() => _showSuccessMessage = false);
+      });
     } catch (e) {
-      debugPrint('Error loading cart count: $e');
+      setState(() => _isAddingToCart = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed: ${e.toString()}', style: TextStyle(color: Colors.white)),
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      );
     }
   }
 
-
-  void _startFlashSaleCountdown(DateTime endTime) {
-    _flashSaleTimeLeft = endTime.difference(DateTime.now());
-
-    if (_flashSaleTimeLeft!.isNegative) {
-      _flashSaleTimeLeft = Duration.zero;
-      return;
-    }
-
-    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) {
-        timer.cancel();
-        return;
+  List<String> _getImageUrls() {
+    if (_product == null) return ['placeholder'];
+    
+    // Handle if imageUrls is empty
+    if (_product!.imageUrls.isEmpty) return ['placeholder'];
+    
+    List<String> urls = [];
+    
+    // Check if the first item is a JSON string that needs parsing
+    final firstUrl = _product!.imageUrls.first;
+    if (firstUrl.startsWith('[') || firstUrl.startsWith('"{')) {
+      try {
+        // Parse the JSON string
+        final cleanUrl = firstUrl.replaceAll('"{', '').replaceAll('}"', '').replaceAll(r'\', '');
+        final List<dynamic> parsed = jsonDecode(cleanUrl);
+        urls = parsed.map((e) => e.toString()).toList();
+      } catch (e) {
+        print('Error parsing image URLs: $e');
+        urls = _product!.imageUrls;
       }
-
-      setState(() {
-        _flashSaleTimeLeft = endTime.difference(DateTime.now());
-        if (_flashSaleTimeLeft!.isNegative) {
-          _flashSaleTimeLeft = Duration.zero;
-          timer.cancel();
-        }
-      });
-    });
+    } else {
+      urls = _product!.imageUrls;
+    }
+    
+    // Filter out invalid placeholder URLs and validate URLs
+    final validUrls = urls.where((url) {
+      // Skip empty URLs
+      if (url.isEmpty) return false;
+      
+      // Skip placeholder URLs
+      if (url.contains('placehold.co')) {
+        print('Skipping placeholder URL: $url');
+        return false;
+      }
+      
+      // Only allow valid HTTP(S) URLs
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        print('Skipping invalid URL (no http/https): $url');
+        return false;
+      }
+      
+      // Additional check: make sure it's from your Supabase storage
+      if (!url.contains('supabase.co')) {
+        print('Warning: URL not from Supabase: $url');
+        return false; // Change to false to skip non-Supabase URLs
+      }
+      
+      print('Valid image URL: $url');
+      return true;
+    }).toList();
+    
+    print('Total valid URLs found: ${validUrls.length}');
+    return validUrls.isEmpty ? ['placeholder'] : validUrls;
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return Scaffold(
-        backgroundColor: AppColors.background,
-        appBar: AppBar(
-          backgroundColor: Colors.white,
-          leading: IconButton(
-            icon: Icon(Icons.arrow_back, color: AppColors.textDark),
-            onPressed: () => Navigator.pop(context),
-          ),
-          title: Text(
-            'Product Details',
-            style: AppTextStyles.heading.copyWith(fontSize: 16),
-          ),
-        ),
-        body: Center(
-          child: CircularProgressIndicator(color: AppColors.primary),
-        ),
-      );
-    }
-
-    if (_error != null || _product == null) {
-      return Scaffold(
-        backgroundColor: AppColors.background,
-        appBar: AppBar(
-          backgroundColor: Colors.white,
-          leading: IconButton(
-            icon: Icon(Icons.arrow_back, color: AppColors.textDark),
-            onPressed: () => Navigator.pop(context),
-          ),
-          title: Text(
-            'Product Details',
-            style: AppTextStyles.heading.copyWith(fontSize: 16),
-          ),
-        ),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.error_outline, size: 64, color: Colors.grey),
-              SizedBox(height: 16),
-              Text(
-                _error ?? 'Product not found',
-                style: AppTextStyles.body.copyWith(color: Colors.grey),
-              ),
-              SizedBox(height: 24),
-              ElevatedButton(onPressed: _loadProductData, child: Text('Retry')),
-            ],
-          ),
-        ),
-      );
-    }
-
-    final product = _product!;
-    final hasImages = product.imageUrls.isNotEmpty;
-    final images = hasImages ? product.imageUrls : ['placeholder'];
+    if (_isLoading) return _LoadingScreen();
+    if (_product == null) return _ErrorScreen();
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppTheme.ashGray,
       body: Stack(
         children: [
           CustomScrollView(
             slivers: [
-              // Header
-              SliverAppBar(
-                pinned: true,
-                elevation: 0,
-                backgroundColor: Colors.white,
-                leading: IconButton(
-                  icon: Icon(Icons.arrow_back, color: AppColors.textDark),
-                  onPressed: () => Navigator.pop(context),
-                ),
-                title: Text(
-                  'Product Details',
-                  style: AppTextStyles.heading.copyWith(fontSize: 16),
-                ),
-                actions: [
-                  Container(
-                    margin: const EdgeInsets.only(right: 8),
-                    decoration: BoxDecoration(
-                      color: Colors.grey[100],
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: IconButton(
-                      icon: Icon(
-                        Icons.ios_share,
-                        color: AppColors.textDark,
-                        size: 20,
-                      ),
-                      onPressed: () => _showShareOptions(context),
-                    ),
-                  ),
-                ],
-              ),
-
+              _buildAppBar(),
               SliverToBoxAdapter(
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Image Carousel
-                    _buildImageCarousel(images, product),
-
-                    const SizedBox(height: 16),
-
-                    // Flash Sale Banner
-                    if (product.isFlashSale &&
-                        _flashSaleTimeLeft != null &&
-                        !_flashSaleTimeLeft!.isNegative)
-                      _buildFlashSaleBanner(),
-
-                    const SizedBox(height: 16),
-
-                    // Product Name
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(
-                        product.name,
-                        style: AppTextStyles.heading.copyWith(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
+                    _ImageCarousel(
+                      images: _getImageUrls(),
+                      discount: _product!.discountPercentage,
+                      onPageChanged: (i) => setState(() => _currentImageIndex = i),
+                      currentIndex: _currentImageIndex,
                     ),
-
-                    const SizedBox(height: 12),
-
-                    // Price Section
-                    _buildPriceSection(product),
-
-                    const SizedBox(height: 12),
-
-                    // Stock & Views
-                    _buildStockAndViews(product),
-
-                    const SizedBox(height: 16),
-
-                    // Rating
-                    _buildRating(product),
-
-                    const SizedBox(height: 16),
-
-                    // University Location
-                    _buildUniversityLocation(product),
-
-                    const SizedBox(height: 24),
-
-                    // Product Details (Expandable)
-                    _buildProductDetails(product),
-
-                    const SizedBox(height: 16),
-
-                    // Reviews Section
-                    _buildReviewsSection(product),
-
-                    const SizedBox(height: 24),
-
-                    // Similar Products (placeholder for now)
-                    _buildSimilarProducts(),
-
-                    const SizedBox(height: 100), // Space for bottom bar
+                    SizedBox(height: 12),
+                    if (_product!.isFlashSale && _flashSaleTimeLeft != null && !_flashSaleTimeLeft!.isNegative)
+                      _FlashSaleBanner(timeLeft: _flashSaleTimeLeft!),
+                    _ProductInfo(
+                      product: _product!,
+                      isFavorite: _isFavorite,
+                      onFavoriteToggle: () => setState(() => _isFavorite = !_isFavorite),
+                    ),
+                    _UniversityCard(product: _product!),
+                    _PromoBanners(),
+                    _DetailsCard(product: _product!),
+                    _ReviewsCard(reviews: _reviews),
+                    _RelatedProducts(),
+                    SizedBox(height: 100),
                   ],
                 ),
               ),
             ],
           ),
-
-          // Bottom Action Bar
-          // --- UPDATED --- (This method is now fully replaced)
-          _buildBottomActionBar(),
+          _buildBottomBar(),
+          if (_showSuccessMessage) _buildSuccessOverlay(),
         ],
       ),
     );
   }
 
-  Widget _buildImageCarousel(List<String> images, ProductModel product) {
-    return Stack(
-      children: [
-        CarouselSlider(
-          options: CarouselOptions(
-            height: 320,
-            viewportFraction: 1.0,
-            enableInfiniteScroll: images.length > 1,
-            onPageChanged: (index, reason) {
-              setState(() {
-                _currentImageIndex = index;
-              });
-            },
-          ),
-          items: images.map((imageUrl) {
-            return Container(
-              width: double.infinity,
-              color: Colors.grey[100],
-              child: imageUrl == 'placeholder'
-                  ? _buildPlaceholderImage(product)
-                  : Image.network(
-                      imageUrl,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return _buildPlaceholderImage(product);
-                      },
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return Center(
-                          child: CircularProgressIndicator(
-                            value: loadingProgress.expectedTotalBytes != null
-                                ? loadingProgress.cumulativeBytesLoaded /
-                                      loadingProgress.expectedTotalBytes!
-                                : null,
-                          ),
-                        );
-                      },
-                    ),
-            );
-          }).toList(),
-        ),
-
-        // Discount Badge
-        if (product.discountPercentage != null &&
-            product.discountPercentage! > 0)
-          Positioned(
-            top: 16,
-            left: 16,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Color(0xFFFF6B35),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                '-${product.discountPercentage}%',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                  fontSize: 14,
-                ),
-              ),
-            ),
-          ),
-
-        // Favorite Button
-        Positioned(
-          top: 16,
-          right: 16,
-          child: GestureDetector(
-            onTap: () {
-              setState(() {
-                _isFavorite = !_isFavorite;
-              });
-              // TODO: Connect to favorites service
-            },
-            child: Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 8,
-                    offset: Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: Icon(
-                _isFavorite ? Icons.favorite : Icons.favorite_border,
-                color: Color(0xFFFF6B35),
-                size: 22,
-              ),
-            ),
-          ),
-        ),
-
-        // Dots Indicator (only show if multiple images)
-        if (images.length > 1)
-          Positioned(
-            bottom: 16,
-            left: 0,
-            right: 0,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(
-                images.length,
-                (index) => Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
-                  width: _currentImageIndex == index ? 24 : 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: _currentImageIndex == index
-                        ? Color(0xFFFF6B35)
-                        : Colors.grey[400],
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-              ),
-            ),
-          ),
+  Widget _buildAppBar() {
+    return SliverAppBar(
+      pinned: true,
+      elevation: 0,
+      backgroundColor: AppTheme.white,
+      expandedHeight: 0,
+      toolbarHeight: 56,
+      leading: _CircleButton(
+        icon: Icons.arrow_back_ios_new_rounded,
+        onPressed: () => Navigator.pop(context),
+      ),
+      actions: [
+        _CircleButton(icon: Icons.share_rounded, onPressed: () {}),
+        SizedBox(width: 8),
       ],
     );
   }
 
-  Widget _buildPlaceholderImage(ProductModel product) {
-    return Container(
-      color: Colors.grey[100],
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.shopping_bag,
-            size: 80,
-            color: AppColors.primary.withOpacity(0.3),
-          ),
-          const SizedBox(height: 12),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
-            child: Text(
-              product.name,
-              style: AppTextStyles.body.copyWith(color: AppColors.textLight),
-              textAlign: TextAlign.center,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFlashSaleBanner() {
-    if (_flashSaleTimeLeft == null) return SizedBox.shrink();
-
-    final hours = _flashSaleTimeLeft!.inHours;
-    final minutes = _flashSaleTimeLeft!.inMinutes % 60;
-    final seconds = _flashSaleTimeLeft!.inSeconds % 60;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+  Widget _buildBottomBar() {
+    return Positioned(
+      bottom: 0,
+      left: 0,
+      right: 0,
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(14).copyWith(bottom: 14 + MediaQuery.of(context).padding.bottom),
         decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Color(0xFFFF6B35).withOpacity(0.3),
-              blurRadius: 12,
-              offset: Offset(0, 4),
-            ),
-          ],
+          color: AppTheme.white,
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.08), blurRadius: 20, offset: Offset(0, -4))],
         ),
         child: Row(
           children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(Icons.bolt, color: Colors.white, size: 20),
-            ),
-            const SizedBox(width: 12),
+            _CartButton(count: _cartItemCount, onTap: () => Navigator.pushNamed(context, '/cart')),
+            SizedBox(width: 10),
             Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+              child: _GradientButton(
+                text: _product?.isAvailable == true ? 'Add to Cart' : 'Out of Stock',
+                icon: Icons.shopping_cart_outlined,
+                isLoading: _isAddingToCart,
+                onPressed: _product?.isAvailable == true ? _addToCart : null,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSuccessOverlay() {
+    return Positioned(
+      top: 100,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: AnimatedOpacity(
+          opacity: _showSuccessMessage ? 1.0 : 0.0,
+          duration: Duration(milliseconds: 300),
+          child: Container(
+            margin: EdgeInsets.symmetric(horizontal: 40),
+            padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFF10B981), Color(0xFF059669)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(color: Color(0xFF10B981).withOpacity(0.4), blurRadius: 20, offset: Offset(0, 8)),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.check_circle_rounded, color: Colors.white, size: 24),
+                ),
+                SizedBox(width: 12),
+                Flexible(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text('⚡ ', style: TextStyle(fontSize: 14)),
-                      Text(
-                        'FLASH SALE ENDING SOON',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                      Text(' 🔥', style: TextStyle(fontSize: 14)),
+                      Text('Added to Cart!', style: TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.bold)),
+                      Text('Item successfully added', style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 11)),
                     ],
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Grab this deal before time runs out!',
-                    style: TextStyle(
-                      color: Colors.white.withOpacity(0.9),
-                      fontSize: 11,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Color(0xFFFF6B35),
-                  fontWeight: FontWeight.bold,
-                  fontFeatures: [FontFeature.tabularFigures()],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPriceSection(ProductModel product) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(
-            product.formattedPrice,
-            style: AppTextStyles.price.copyWith(
-              fontSize: 28,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          if (product.originalPrice != null &&
-              product.originalPrice! > product.price) ...[
-            const SizedBox(width: 12),
-            Text(
-              '₦${product.originalPrice!.toStringAsFixed(0)}',
-              style: TextStyle(
-                fontSize: 16,
-                color: AppColors.textLight,
-                decoration: TextDecoration.lineThrough,
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStockAndViews(ProductModel product) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          if (product.stockQuantity <= 10) ...[
-            Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(
-                color: Color(0xFFFF6B35),
-                shape: BoxShape.circle,
-              ),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              'Only ${product.stockQuantity} left in stock',
-              style: AppTextStyles.body.copyWith(
-                fontSize: 13,
-                color: Color(0xFFFF6B35),
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-          const Spacer(),
-          Icon(Icons.visibility, size: 16, color: AppColors.textLight),
-          const SizedBox(width: 4),
-          Text(
-            '${product.viewCount} views',
-            style: AppTextStyles.body.copyWith(
-              fontSize: 13,
-              color: AppColors.textLight,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildRating(ProductModel product) {
-    final rating = product.averageRating ?? 0.0;
-    final reviewCount = product.reviewCount;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          Text(
-            rating.toStringAsFixed(1),
-            style: AppTextStyles.heading.copyWith(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(width: 6),
-          ...List.generate(5, (index) {
-            return Icon(
-              index < rating.floor()
-                  ? Icons.star
-                  : (index < rating ? Icons.star_half : Icons.star_border),
-              color: Colors.amber,
-              size: 18,
-            );
-          }),
-          const SizedBox(width: 8),
-          Text(
-            '($reviewCount ${reviewCount == 1 ? 'rating' : 'ratings'})',
-            style: AppTextStyles.body.copyWith(
-              fontSize: 13,
-              color: AppColors.textLight,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildUniversityLocation(ProductModel product) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
-            children: [
-              Icon(Icons.location_on, size: 18, color: AppColors.primary),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  product.universityName ?? 'Unknown University',
-                  style: AppTextStyles.body.copyWith(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-              Icon(Icons.verified, size: 16, color: Color(0xFF10B981)),
-            ],
-          ),
-        ),
-        if (product.sellerName != null) ...[
-          const SizedBox(height: 8),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Row(
-              children: [
-                Icon(Icons.person, size: 16, color: AppColors.textLight),
-                const SizedBox(width: 6),
-                Text(
-                  'Sold by ${product.sellerName}',
-                  style: AppTextStyles.body.copyWith(
-                    fontSize: 13,
-                    color: AppColors.textLight,
-                  ),
                 ),
               ],
             ),
           ),
-        ],
-      ],
+        ),
+      ),
     );
   }
+}
 
-  Widget _buildProductDetails(ProductModel product) {
+// Reusable Widgets
+class _LoadingScreen extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.ashGray,
+      body: Center(
+        child: Container(
+          padding: EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            gradient: AppTheme.gradient,
+            shape: BoxShape.circle,
+            boxShadow: [BoxShadow(color: AppTheme.orangeStart.withOpacity(0.3), blurRadius: 24)],
+          ),
+          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+        ),
+      ),
+    );
+  }
+}
+
+class _ErrorScreen extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppTheme.ashGray,
+      body: Center(child: Text('Product not found', style: TextStyle(color: AppTheme.textLight))),
+    );
+  }
+}
+
+class _CircleButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onPressed;
+
+  const _CircleButton({required this.icon, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
+      margin: EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        color: AppTheme.white,
+        shape: BoxShape.circle,
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.06), blurRadius: 12, offset: Offset(0, 2))],
       ),
-      child: Column(
-        children: [
-          InkWell(
-            onTap: () {
-              setState(() {
-                _isProductDetailsExpanded = !_isProductDetailsExpanded;
-              });
-            },
-            borderRadius: BorderRadius.circular(12),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Row(
-                children: [
-                  Text(
-                    'Product Details',
-                    style: AppTextStyles.heading.copyWith(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const Spacer(),
-                  Icon(
-                    _isProductDetailsExpanded
-                        ? Icons.keyboard_arrow_up
-                        : Icons.keyboard_arrow_right,
-                    color: AppColors.textDark,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (_isProductDetailsExpanded)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (product.brand != null)
-                    _buildDetailRow('Brand', product.brand!),
-                  if (product.brand != null) const SizedBox(height: 10),
-                  _buildDetailRow('Condition', product.condition.toUpperCase()),
-                  const SizedBox(height: 10),
-                  if (product.color != null) ...[
-                    _buildDetailRow('Color', product.color!),
-                    const SizedBox(height: 10),
-                  ],
-                  _buildDetailRow('Category', product.categoryName ?? 'N/A'),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Description',
-                    style: AppTextStyles.body.copyWith(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.textLight,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    product.description.isEmpty
-                        ? 'No description available'
-                        : product.description,
-                    style: AppTextStyles.body.copyWith(
-                      fontSize: 14,
-                      height: 1.5,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-        ],
+      child: IconButton(
+        icon: ShaderMask(
+          shaderCallback: (bounds) => AppTheme.gradient.createShader(bounds),
+          child: Icon(icon, color: Colors.white, size: 20),
+        ),
+        onPressed: onPressed,
       ),
     );
   }
+}
 
-  Widget _buildReviewsSection(ProductModel product) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Reviews (${_reviews.length})',
-            style: AppTextStyles.heading.copyWith(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
+class _ImageCarousel extends StatelessWidget {
+  final List<String> images;
+  final int? discount;
+  final Function(int) onPageChanged;
+  final int currentIndex;
+
+  const _ImageCarousel({
+    required this.images,
+    this.discount,
+    required this.onPageChanged,
+    required this.currentIndex,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 300,
+      margin: EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: AppTheme.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Stack(
+          children: [
+            CarouselSlider(
+              options: CarouselOptions(
+                height: 300,
+                viewportFraction: 1.0,
+                enableInfiniteScroll: images.length > 1,
+                onPageChanged: (i, _) => onPageChanged(i),
+              ),
+              items: images.map((url) => url == 'placeholder'
+                  ? Center(
+                      child: ShaderMask(
+                        shaderCallback: (bounds) => AppTheme.gradient.createShader(bounds),
+                        child: Icon(Icons.shopping_bag_outlined, size: 60, color: Colors.white),
+                      ),
+                    )
+                  : Image.network(
+                      url, 
+                      fit: BoxFit.contain,
+                      width: double.infinity,
+                      height: 300,
+                      errorBuilder: (context, error, stackTrace) {
+                        print('❌ Image load error for URL: $url');
+                        print('❌ Error details: $error');
+                        return Container(
+                          color: AppTheme.ashGray,
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                ShaderMask(
+                                  shaderCallback: (bounds) => AppTheme.gradient.createShader(bounds),
+                                  child: Icon(Icons.image_not_supported_outlined, size: 60, color: Colors.white),
+                                ),
+                                SizedBox(height: 8),
+                                Text('Image unavailable', style: TextStyle(color: AppTheme.textLight, fontSize: 12)),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                      loadingBuilder: (context, child, loadingProgress) {
+                        if (loadingProgress == null) return child;
+                        return Container(
+                          color: AppTheme.ashGray,
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              value: loadingProgress.expectedTotalBytes != null
+                                  ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                                  : null,
+                              color: AppTheme.orangeStart,
+                              strokeWidth: 3,
+                            ),
+                          ),
+                        );
+                      },
+                    )).toList(),
             ),
-          ),
-          const SizedBox(height: 12),
-
-          // Overall Rating
-          if (product.averageRating != null && product.averageRating! > 0)
-            Row(
-              children: [
-                Text(
-                  product.averageRating!.toStringAsFixed(1),
-                  style: AppTextStyles.heading.copyWith(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.amber[700],
+            if (discount != null && discount! > 0)
+              Positioned(
+                top: 12,
+                right: 12,
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    gradient: AppTheme.gradient,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [BoxShadow(color: AppTheme.orangeStart.withOpacity(0.3), blurRadius: 8)],
                   ),
+                  child: Text('-${discount!}%', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
                 ),
-                const SizedBox(width: 8),
-                ...List.generate(5, (index) {
-                  final rating = product.averageRating!;
-                  return Icon(
-                    index < rating.floor()
-                        ? Icons.star
-                        : (index < rating
-                              ? Icons.star_half
-                              : Icons.star_border),
-                    color: Colors.amber,
-                    size: 20,
-                  );
-                }),
-                const SizedBox(width: 8),
-                Text(
-                  'Based on ${product.reviewCount} ${product.reviewCount == 1 ? 'rating' : 'ratings'}',
-                  style: AppTextStyles.body.copyWith(
-                    fontSize: 12,
-                    color: AppColors.textLight,
-                  ),
-                ),
-              ],
-            ),
-
-          const SizedBox(height: 16),
-
-          // Individual Reviews
-          if (_isLoadingReviews)
-            Center(child: CircularProgressIndicator())
-          else if (_reviews.isEmpty)
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  children: [
-                    Icon(Icons.rate_review, size: 48, color: Colors.grey[300]),
-                    SizedBox(height: 12),
-                    Text(
-                      'No reviews yet',
-                      style: AppTextStyles.body.copyWith(color: Colors.grey),
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      'Be the first to review this product!',
-                      style: AppTextStyles.body.copyWith(
-                        fontSize: 12,
-                        color: Colors.grey,
+              ),
+            if (images.length > 1)
+              Positioned(
+                bottom: 16,
+                left: 0,
+                right: 0,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: List.generate(
+                    images.length,
+                    (i) => AnimatedContainer(
+                      duration: Duration(milliseconds: 300),
+                      margin: EdgeInsets.symmetric(horizontal: 3),
+                      width: currentIndex == i ? 24 : 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        gradient: currentIndex == i ? AppTheme.gradient : null,
+                        color: currentIndex == i ? null : Colors.white.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(4),
                       ),
                     ),
-                  ],
+                  ),
                 ),
               ),
-            )
-          else
-            ...List.generate(
-              _reviews.length > 2 ? 2 : _reviews.length,
-              (index) => _buildReviewCard(_reviews[index]),
-            ),
-
-          if (_reviews.length > 2) ...[
-            const SizedBox(height: 12),
-            OutlinedButton(
-              onPressed: () {
-                // TODO: Navigate to all reviews screen
-              },
-              style: OutlinedButton.styleFrom(
-                minimumSize: Size(double.infinity, 48),
-                side: BorderSide(color: AppColors.textDark, width: 2),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              child: Text(
-                'See All ${_reviews.length} Reviews',
-                style: AppTextStyles.body.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textDark,
-                ),
-              ),
-            ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _FlashSaleBanner extends StatelessWidget {
+  final Duration timeLeft;
+
+  const _FlashSaleBanner({required this.timeLeft});
+
+  @override
+  Widget build(BuildContext context) {
+    final h = timeLeft.inHours;
+    final m = timeLeft.inMinutes % 60;
+    final s = timeLeft.inSeconds % 60;
+    
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      padding: EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: AppTheme.gradient,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: AppTheme.orangeStart.withOpacity(0.3), blurRadius: 16, offset: Offset(0, 6))],
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.bolt, color: Colors.white, size: 22),
+          SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('FLASH SALE', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13, letterSpacing: 0.8)),
+                Text('Hurry! Limited time', style: TextStyle(color: Colors.white70, fontSize: 10)),
+              ],
+            ),
+          ),
+          Container(
+            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
+            child: Text(
+              '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppTheme.navyBlue, fontFeatures: [FontFeature.tabularFigures()]),
+            ),
+          ),
         ],
       ),
     );
   }
+}
 
-  Widget _buildReviewCard(ReviewModel review) {
+class _ProductInfo extends StatelessWidget {
+  final ProductModel product;
+  final bool isFavorite;
+  final VoidCallback onFavoriteToggle;
+
+  const _ProductInfo({required this.product, required this.isFavorite, required this.onFavoriteToggle});
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      margin: EdgeInsets.all(12),
+      padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        color: AppTheme.white,
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: AppColors.primary.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-                child: Center(
-                  child: Text(
-                    (review.userName ?? 'U')[0].toUpperCase(),
-                    style: TextStyle(
-                      color: AppColors.primary,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
+              Expanded(
+                child: Text(
+                  product.name,
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppTheme.navyBlue, letterSpacing: -0.3),
                 ),
               ),
-              const SizedBox(width: 12),
+              GestureDetector(
+                onTap: onFavoriteToggle,
+                child: Container(
+                  padding: EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    gradient: isFavorite ? AppTheme.gradient : null,
+                    color: isFavorite ? null : AppTheme.ashGray,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(isFavorite ? Icons.favorite : Icons.favorite_border, color: isFavorite ? Colors.white : AppTheme.orangeStart, size: 18),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              ShaderMask(
+                shaderCallback: (bounds) => AppTheme.gradient.createShader(bounds),
+                child: Text('₦${product.price.toStringAsFixed(0)}', style: TextStyle(fontSize: 26, fontWeight: FontWeight.bold, color: Colors.white)),
+              ),
+              if (product.originalPrice != null && product.originalPrice! > product.price) ...[
+                SizedBox(width: 10),
+                Text('₦${product.originalPrice!.toStringAsFixed(0)}', style: TextStyle(fontSize: 14, color: AppTheme.textLight, decoration: TextDecoration.lineThrough)),
+              ],
+            ],
+          ),
+          SizedBox(height: 12),
+          Row(
+            children: [
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(8)),
+                child: Row(
+                  children: [
+                    Icon(Icons.star, color: Colors.amber, size: 14),
+                    SizedBox(width: 5),
+                    Text('${(product.averageRating ?? 0.0).toStringAsFixed(1)}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.navyBlue)),
+                    Text(' (${product.reviewCount})', style: TextStyle(fontSize: 11, color: AppTheme.textLight)),
+                  ],
+                ),
+              ),
+              Spacer(),
+              ShaderMask(
+                shaderCallback: (bounds) => AppTheme.gradient.createShader(bounds),
+                child: Icon(Icons.visibility_outlined, size: 14, color: Colors.white),
+              ),
+              SizedBox(width: 5),
+              Text('${product.viewCount}', style: TextStyle(fontSize: 12, color: AppTheme.textLight)),
+            ],
+          ),
+          if (product.stockQuantity <= 10) ...[
+            SizedBox(height: 10),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(color: AppTheme.orangeStart.withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.local_fire_department, size: 14, color: AppTheme.orangeStart),
+                  SizedBox(width: 6),
+                  Text('Only ${product.stockQuantity} left!', style: TextStyle(color: AppTheme.orangeStart, fontSize: 11, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _UniversityCard extends StatelessWidget {
+  final ProductModel product;
+
+  const _UniversityCard({required this.product});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      padding: EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.white,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: EdgeInsets.all(10),
+            decoration: BoxDecoration(gradient: AppTheme.gradient, shape: BoxShape.circle),
+            child: Icon(Icons.location_on_outlined, color: Colors.white, size: 18),
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(product.universityName ?? 'Unknown', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.navyBlue)),
+                if (product.sellerName != null) Text('by ${product.sellerName}', style: TextStyle(fontSize: 11, color: AppTheme.textLight)),
+              ],
+            ),
+          ),
+          Icon(Icons.verified, color: Color(0xFF10B981), size: 16),
+        ],
+      ),
+    );
+  }
+}
+
+class _PromoBanners extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    final promos = [
+      {'title': '🔒 Secure Payment', 'subtitle': 'Money held in escrow'},
+      {'title': '💰 Part Payment', 'subtitle': 'Available for ₦35k+'},
+      {'title': '↩️ Easy Returns', 'subtitle': 'Full refund guarantee'},
+    ];
+
+    return Container(
+      height: 85,
+      margin: EdgeInsets.symmetric(vertical: 6),
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: EdgeInsets.symmetric(horizontal: 12),
+        itemCount: promos.length,
+        itemBuilder: (_, i) {
+          final promo = promos[i];
+          return Container(
+            width: 160,
+            margin: EdgeInsets.only(right: 10),
+            padding: EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              gradient: AppTheme.gradient,
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: [BoxShadow(color: AppTheme.orangeStart.withOpacity(0.25), blurRadius: 12, offset: Offset(0, 4))],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(promo['title'] as String, style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                SizedBox(height: 3),
+                Text(promo['subtitle'] as String, style: TextStyle(color: Colors.white.withOpacity(0.9), fontSize: 11)),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _DetailsCard extends StatefulWidget {
+  final ProductModel product;
+
+  const _DetailsCard({required this.product});
+
+  @override
+  State<_DetailsCard> createState() => _DetailsCardState();
+}
+
+class _DetailsCardState extends State<_DetailsCard> {
+  bool _isExpanded = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: EdgeInsets.all(12),
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: () => setState(() => _isExpanded = !_isExpanded),
+            child: Row(
+              children: [
+                Text('Product Details', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.navyBlue)),
+                Spacer(),
+                ShaderMask(
+                  shaderCallback: (bounds) => AppTheme.gradient.createShader(bounds),
+                  child: Icon(_isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, color: Colors.white, size: 20),
+                ),
+              ],
+            ),
+          ),
+          if (_isExpanded) ...[
+            SizedBox(height: 12),
+            _DetailRow(label: 'Condition', value: widget.product.condition.toUpperCase()),
+            if (widget.product.brand != null) _DetailRow(label: 'Brand', value: widget.product.brand!),
+            if (widget.product.color != null) _DetailRow(label: 'Color', value: widget.product.color!),
+            _DetailRow(label: 'Category', value: widget.product.categoryName ?? 'N/A'),
+            SizedBox(height: 12),
+            Text('Description', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.navyBlue)),
+            SizedBox(height: 6),
+            Text(
+              widget.product.description.isEmpty ? 'No description' : widget.product.description,
+              style: TextStyle(fontSize: 12, height: 1.4, color: AppTheme.textLight),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _DetailRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          SizedBox(width: 85, child: Text(label, style: TextStyle(fontSize: 11, color: AppTheme.textLight))),
+          Expanded(child: Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.navyBlue))),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReviewsCard extends StatelessWidget {
+  final List<ReviewModel> reviews;
+
+  const _ReviewsCard({required this.reviews});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: EdgeInsets.all(12),
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Reviews (${reviews.length})', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.navyBlue)),
+          SizedBox(height: 12),
+          if (reviews.isEmpty)
+            Center(
+              child: Padding(
+                padding: EdgeInsets.all(20),
+                child: Column(
+                  children: [
+                    ShaderMask(
+                      shaderCallback: (bounds) => AppTheme.gradient.createShader(bounds),
+                      child: Icon(Icons.rate_review_outlined, size: 40, color: Colors.white),
+                    ),
+                    SizedBox(height: 10),
+                    Text('No reviews yet', style: TextStyle(color: AppTheme.textLight, fontSize: 12)),
+                  ],
+                ),
+              ),
+            )
+          else
+            ...reviews.take(2).map((r) => _ReviewItem(review: r)),
+          if (reviews.length > 2)
+            Padding(
+              padding: EdgeInsets.only(top: 10),
+              child: _GradientButton(
+                text: 'See All ${reviews.length} Reviews',
+                onPressed: () {},
+                isSmall: true,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReviewItem extends StatelessWidget {
+  final ReviewModel review;
+
+  const _ReviewItem({required this.review});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: EdgeInsets.only(bottom: 10),
+      padding: EdgeInsets.all(12),
+      decoration: BoxDecoration(color: AppTheme.ashGray, borderRadius: BorderRadius.circular(14)),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 16,
+                backgroundColor: AppTheme.orangeStart.withOpacity(0.1),
+                child: Text((review.userName ?? 'U')[0].toUpperCase(), style: TextStyle(color: AppTheme.orangeStart, fontWeight: FontWeight.bold, fontSize: 12)),
+              ),
+              SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
+                    Text(review.userName ?? 'Anonymous', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: AppTheme.navyBlue)),
                     Row(
                       children: [
-                        Text(
-                          review.userName ?? 'Anonymous',
-                          style: AppTextStyles.body.copyWith(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
-                        ),
-                        if (review.isVerifiedPurchase) ...[
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Color(0xFFD1FAE5),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              'Verified',
-                              style: TextStyle(
-                                color: Color(0xFF10B981),
-                                fontSize: 9,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Row(
-                      children: [
-                        ...List.generate(5, (index) {
-                          return Icon(
-                            index < review.rating.floor()
-                                ? Icons.star
-                                : Icons.star_border,
-                            color: Colors.amber,
-                            size: 14,
-                          );
-                        }),
-                        const SizedBox(width: 6),
-                        Text(
-                          review.timeAgo,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: AppColors.textLight,
-                          ),
-                        ),
+                        ...List.generate(5, (i) => Icon(i < review.rating ? Icons.star : Icons.star_border, color: Colors.amber, size: 12)),
+                        SizedBox(width: 6),
+                        Text(review.timeAgo, style: TextStyle(fontSize: 10, color: AppTheme.textLight)),
                       ],
                     ),
                   ],
@@ -1049,329 +929,193 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          Text(
-            review.comment,
-            style: AppTextStyles.body.copyWith(fontSize: 13, height: 1.4),
-          ),
+          SizedBox(height: 8),
+          Text(review.comment, style: TextStyle(fontSize: 11, height: 1.4, color: AppTheme.textLight)),
         ],
       ),
     );
   }
+}
 
-  Widget _buildSimilarProducts() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+class _RelatedProducts extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: EdgeInsets.all(12),
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.white,
+        borderRadius: BorderRadius.circular(20),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Similar Products',
-            style: AppTextStyles.heading.copyWith(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: EdgeInsets.all(32),
-            decoration: BoxDecoration(
-              color: Colors.grey[50],
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Center(
-              child: Text(
-                'Coming soon!',
-                style: AppTextStyles.body.copyWith(color: Colors.grey),
+          Row(
+            children: [
+              ShaderMask(
+                shaderCallback: (bounds) => AppTheme.gradient.createShader(bounds),
+                child: Icon(Icons.shopping_bag_outlined, size: 18, color: Colors.white),
               ),
-            ),
+              SizedBox(width: 8),
+              Text('You May Also Like', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppTheme.navyBlue)),
+            ],
           ),
-        ],
-      ),
-    );
-  }
-
-  // --- FULLY REPLACED ---
-  Widget _buildBottomActionBar() {
-    return Positioned(
-      bottom: 0,
-      left: 0,
-      right: 0,
-      child: Container(
-        padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.of(context).padding.bottom), // <-- Add safe area padding
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.1),
-              blurRadius: 10,
-              offset: Offset(0, -2),
-            ),
-          ],
-        ),
-        child: Row(
-          children: [
-            // Cart Button with Badge
-            GestureDetector(
-              onTap: () {
-                Navigator.pushNamed(context, '/cart');
-              },
-              child: Container(
-                width: 56,
-                height: 56,
-                decoration: BoxDecoration(
-                  border: Border.all(color: Color(0xFFFF6B35), width: 2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Icon(
-                      Icons.shopping_cart_outlined,
-                      color: Color(0xFFFF6B35),
-                      size: 24,
-                    ),
-                    if (_cartItemCount > 0)
-                      Positioned(
-                        right: 6,
-                        top: 6,
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: Color(0xFFFF6B35),
-                            shape: BoxShape.circle,
-                          ),
-                          constraints: const BoxConstraints(
-                            minWidth: 18,
-                            minHeight: 18,
-                          ),
-                          child: Text(
-                            '$_cartItemCount',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.bold,
-                            ),
-                            textAlign: TextAlign.center,
+          SizedBox(height: 12),
+          SizedBox(
+            height: 170,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: 4,
+              itemBuilder: (_, i) {
+                return Container(
+                  width: 130,
+                  margin: EdgeInsets.only(right: 10),
+                  decoration: BoxDecoration(
+                    color: AppTheme.ashGray,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        height: 100,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
+                        ),
+                        child: Center(
+                          child: ShaderMask(
+                            shaderCallback: (bounds) => AppTheme.gradient.createShader(bounds),
+                            child: Icon(Icons.image_outlined, size: 35, color: Colors.white),
                           ),
                         ),
                       ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(width: 12),
-
-            // Add to Cart Button
-            Expanded(
-              child: ElevatedButton.icon(
-                onPressed: (_product?.isAvailable == true && !_isAddingToCart)
-                    ? () async {
-                        setState(() => _isAddingToCart = true);
-                        try {
-                          final userId = _authService.currentUserId;
-                          if (userId == null) {
-                            throw Exception('You must be logged in');
-                          }
-                          
-                          await _cartService.addToCart(
-                            userId: userId,
-                            productId: _product!.id,
-                          );
-
-                          await _loadCartCount(); // Refresh count
-
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Row(
-                                  children: [
-                                    Icon(Icons.check_circle, color: Colors.white, size: 20),
-                                    const SizedBox(width: 12),
-                                    Text('"${_product!.name}" added to cart!'),
-                                  ],
-                                ),
-                                duration: Duration(seconds: 2),
-                                backgroundColor: Color(0xFF10B981),
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-                            );
-                          }
-                        } catch (e) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Failed to add to cart: ${e.toString()}'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
-                          }
-                        } finally {
-                          if (mounted) {
-                            setState(() => _isAddingToCart = false);
-                          }
-                        }
-                      }
-                    : null,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Color(0xFFFF6B35),
-                  foregroundColor: Colors.white,
-                  minimumSize: Size(double.infinity, 56),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  elevation: 2,
-                  disabledBackgroundColor: Colors.grey[300],
-                ),
-                icon: _isAddingToCart
-                    ? Container(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
+                      Padding(
+                        padding: EdgeInsets.all(10),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text('Product ${i + 1}', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppTheme.navyBlue), maxLines: 2),
+                            SizedBox(height: 5),
+                            ShaderMask(
+                              shaderCallback: (bounds) => AppTheme.gradient.createShader(bounds),
+                              child: Text('₦${(15000 + (i * 5000)).toStringAsFixed(0)}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.white)),
+                            ),
+                          ],
                         ),
-                      )
-                    : Icon(Icons.add_shopping_cart),
-                label: Text(
-                  _product?.isAvailable == true
-                      ? 'Add to Cart'
-                      : 'Out of Stock',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-              ),
+                      ),
+                    ],
+                  ),
+                );
+              },
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
-  
-  Widget _buildDetailRow(String label, String value) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 80,
-          child: Text(
-            label,
-            style: AppTextStyles.body.copyWith(
-              fontSize: 13,
-              color: AppColors.textLight,
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            value,
-            style: AppTextStyles.body.copyWith(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+}
 
-  void _showShareOptions(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        // --- THIS IS THE FIX ---
-        // Removed 'const' from the padding to allow dynamic value
-        padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.of(context).padding.bottom),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: Colors.grey[300],
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              'Share Product',
-              style: AppTextStyles.heading.copyWith(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              children: [
-                _buildShareOption(
-                  icon: Icons.copy,
-                  label: 'Copy Link',
-                  onTap: () {
-                    Navigator.pop(context);
-                    ScaffoldMessenger.of(
-                      context,
-                    ).showSnackBar(SnackBar(content: Text('Link copied!')));
-                  },
-                ),
-                _buildShareOption(
-                  icon: Icons.message,
-                  label: 'WhatsApp',
-                  color: Color(0xFF25D366),
-                  onTap: () => Navigator.pop(context),
-                ),
-                _buildShareOption(
-                  icon: Icons.email,
-                  label: 'Email',
-                  color: Color(0xFF0072C6),
-                  onTap: () => Navigator.pop(context),
-                ),
-                _buildShareOption(
-                  icon: Icons.more_horiz,
-                  label: 'More',
-                  onTap: () => Navigator.pop(context),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
-          ],
-        ),
-      ),
-    );
-  }
+class _CartButton extends StatelessWidget {
+  final int count;
+  final VoidCallback onTap;
 
-  Widget _buildShareOption({
-    required IconData icon,
-    required String label,
-    required VoidCallback onTap,
-    Color? color,
-  }) {
+  const _CartButton({required this.count, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: Column(
-        children: [
-          Container(
-            width: 60,
-            height: 60,
-            decoration: BoxDecoration(
-              color: (color ?? AppColors.primary).withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: color ?? AppColors.primary, size: 28),
-          ),
-          const SizedBox(height: 8),
-          Text(label, style: AppTextStyles.body.copyWith(fontSize: 12)),
-        ],
+      child: Container(
+        width: 56,
+        height: 56,
+        decoration: BoxDecoration(
+          border: Border.all(color: AppTheme.orangeStart, width: 2),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Icon(Icons.shopping_cart_outlined, color: AppTheme.orangeStart, size: 24),
+            if (count > 0)
+              Positioned(
+                right: 8,
+                top: 8,
+                child: Container(
+                  padding: EdgeInsets.all(4),
+                  decoration: BoxDecoration(
+                    gradient: AppTheme.gradient,
+                    shape: BoxShape.circle,
+                  ),
+                  constraints: BoxConstraints(minWidth: 18, minHeight: 18),
+                  child: Text(
+                    '$count',
+                    style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GradientButton extends StatelessWidget {
+  final String text;
+  final IconData? icon;
+  final bool isLoading;
+  final VoidCallback? onPressed;
+  final bool isSmall;
+
+  const _GradientButton({
+    required this.text,
+    this.icon,
+    this.isLoading = false,
+    this.onPressed,
+    this.isSmall = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: isSmall ? 42 : 52,
+      decoration: BoxDecoration(
+        gradient: onPressed != null ? AppTheme.gradient : null,
+        color: onPressed == null ? AppTheme.textLight.withOpacity(0.3) : null,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: onPressed != null
+            ? [BoxShadow(color: AppTheme.orangeStart.withOpacity(0.3), blurRadius: 12, offset: Offset(0, 4))]
+            : [],
+      ),
+      child: ElevatedButton(
+        onPressed: onPressed,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.transparent,
+          shadowColor: Colors.transparent,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        ),
+        child: isLoading
+            ? SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (icon != null) ...[
+                    Icon(icon, size: isSmall ? 16 : 20, color: Colors.white),
+                    SizedBox(width: 8),
+                  ],
+                  Text(
+                    text,
+                    style: TextStyle(
+                      fontSize: isSmall ? 13 : 15,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                      letterSpacing: 0.2,
+                    ),
+                  ),
+                ],
+              ),
       ),
     );
   }

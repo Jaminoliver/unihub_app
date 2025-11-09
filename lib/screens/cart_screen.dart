@@ -7,6 +7,8 @@ import '../models/cart_model.dart';
 import 'product_details_screen.dart';
 import '../models/product_model.dart';
 import 'dart:ui';
+import '../screens/checkout_address_screen.dart'; 
+
 
 class CartScreen extends StatefulWidget {
   const CartScreen({super.key});
@@ -108,9 +110,9 @@ class _CartScreenState extends State<CartScreen> with TickerProviderStateMixin {
 
   String _formatPrice(double price) {
     return '₦${price.toStringAsFixed(0).replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]},',
-    )}';
+          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+          (Match m) => '${m[1]},',
+        )}';
   }
 
   double get _selectedItemsTotal {
@@ -1358,7 +1360,9 @@ class _CartScreenState extends State<CartScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildCheckoutBar() {
+ // Paste this entire function into cart_screen.dart, replacing the old one.
+
+Widget _buildCheckoutBar() {
     final double selectedTotal = _selectedItemsTotal;
     final double escrowAmount = _escrowAmount;
     final bool canCheckout = _canCheckout;
@@ -1501,52 +1505,42 @@ class _CartScreenState extends State<CartScreen> with TickerProviderStateMixin {
                   onTapDown: canCheckout && !_isProcessing
                       ? (_) => _checkoutButtonController.forward()
                       : null,
+                  
+                  // ----------------------------------------------------
+                  // 🚀 THIS IS THE FIX 🚀
+                  // ----------------------------------------------------
                   onTapUp: canCheckout && !_isProcessing
                       ? (_) {
                           _checkoutButtonController.reverse();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Row(
-                                children: [
-                                  Container(
-                                    padding: EdgeInsets.all(6),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white.withOpacity(0.2),
-                                      shape: BoxShape.circle,
-                                    ),
-                                    child: Icon(
-                                      Icons.shopping_bag_rounded,
-                                      color: Colors.white,
-                                      size: 18,
-                                    ),
-                                  ),
-                                  SizedBox(width: 12),
-                                  Expanded(
-                                    child: Text(
-                                      'Processing ${_selectedItemIds.length} items...',
-                                      style: TextStyle(
-                                        fontSize: 15,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                    ),
-                                  ),
-                                ],
+
+                          // 1. Get the list of the *actual* CartModel objects
+                          final selectedItemsList = _cartItems
+                              .where((item) => _selectedItemIds.contains(item.id))
+                              .toList();
+
+                          // 2. Filter the payment methods for only the selected items
+                          // (And fix the Map<dynamic, dynamic> error)
+                          final selectedPaymentsMap = Map<String, String>.from(_selectedPaymentMethods)
+                            ..removeWhere((key, value) => !_selectedItemIds.contains(key));
+
+                          // 3. NAVIGATE to the checkout screen
+                          // These parameter names (selectedItems, paymentMethods)
+                          // now EXACTLY match your CheckoutAddressScreen
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => CheckoutAddressScreen(
+                                selectedItems: selectedItemsList,
+                                paymentMethods: selectedPaymentsMap,
                               ),
-                              backgroundColor: Color(0xFFFF6B35),
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              margin: EdgeInsets.all(16),
-                              elevation: 0,
                             ),
                           );
-                          print('Checkout Data:');
-                          print('Items: $_selectedItemIds');
-                          print('Payment methods: $_selectedPaymentMethods');
-                          print('Escrow: $escrowAmount');
                         }
                       : null,
+                  // ----------------------------------------------------
+                  // 🚀 END OF FIX 🚀
+                  // ----------------------------------------------------
+
                   onTapCancel: () => _checkoutButtonController.reverse(),
                   child: ScaleTransition(
                     scale: _checkoutButtonScale,
@@ -1623,5 +1617,4 @@ class _CartScreenState extends State<CartScreen> with TickerProviderStateMixin {
         ),
       ),
     );
-  }
-}
+  }}
