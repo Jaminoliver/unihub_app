@@ -218,36 +218,35 @@ class ProductService {
       );
 
       // Filter by search query
-      // ✅ IMPROVED: Better search matching with plural/singular support
-final normalizedQuery = query.toLowerCase().trim();
+      final normalizedQuery = query.toLowerCase().trim();
 
-return products
-    .where((p) {
-      final name = p.name.toLowerCase();
-      final description = p.description.toLowerCase();
-      
-      // Check exact match
-      if (name.contains(normalizedQuery) || description.contains(normalizedQuery)) {
-        return true;
-      }
-      
-      // ✅ FIX PLURAL: Check singular form (remove 's' from end)
-      if (normalizedQuery.endsWith('s') && normalizedQuery.length > 2) {
-        final singular = normalizedQuery.substring(0, normalizedQuery.length - 1);
-        if (name.contains(singular) || description.contains(singular)) {
-          return true;
-        }
-      }
-      
-      // ✅ FIX PLURAL: Check plural form (add 's' to end)
-      final plural = normalizedQuery + 's';
-      if (name.contains(plural) || description.contains(plural)) {
-        return true;
-      }
-      
-      return false;
-    })
-    .toList();
+      return products
+          .where((p) {
+            final name = p.name.toLowerCase();
+            final description = p.description.toLowerCase();
+            
+            // Check exact match
+            if (name.contains(normalizedQuery) || description.contains(normalizedQuery)) {
+              return true;
+            }
+            
+            // Check singular form (remove 's' from end)
+            if (normalizedQuery.endsWith('s') && normalizedQuery.length > 2) {
+              final singular = normalizedQuery.substring(0, normalizedQuery.length - 1);
+              if (name.contains(singular) || description.contains(singular)) {
+                return true;
+              }
+            }
+            
+            // Check plural form (add 's' to end)
+            final plural = normalizedQuery + 's';
+            if (name.contains(plural) || description.contains(plural)) {
+              return true;
+            }
+            
+            return false;
+          })
+          .toList();
     }
 
     try {
@@ -281,109 +280,103 @@ return products
     }
   }
   
-  /// ✅ ADD THIS NEW METHOD after your searchProducts() method
-/// Around line 230 (after searchProducts method ends)
-
-/// Get real-time search suggestions as user types
-Future<List<String>> getSearchSuggestions({
-  required String partialQuery,
-  String? state,
-  String? universityId,
-  int limit = 10,
-}) async {
-  // Don't query if input is too short
-  if (partialQuery.isEmpty || partialQuery.length < 2) return [];
-  
-  try {
-    final normalizedQuery = partialQuery.toLowerCase().trim();
+  /// Get real-time search suggestions as user types
+  Future<List<String>> getSearchSuggestions({
+    required String partialQuery,
+    String? state,
+    String? universityId,
+    int limit = 10,
+  }) async {
+    // Don't query if input is too short
+    if (partialQuery.isEmpty || partialQuery.length < 2) return [];
     
-    // If state-based filtering is active
-    if (state != null) {
-      // Get products from state
-      final products = await getProductsByState(
-        state: state,
-        priorityUniversityId: universityId,
-        limit: 100,
-      );
+    try {
+      final normalizedQuery = partialQuery.toLowerCase().trim();
       
-      // Filter and extract matching product names
-      final matchingNames = <String>{};
-      
-      for (var product in products) {
-        final name = product.name.toLowerCase();
+      // If state-based filtering is active
+      if (state != null) {
+        // Get products from state
+        final products = await getProductsByState(
+          state: state,
+          priorityUniversityId: universityId,
+          limit: 100,
+        );
         
-        // Check if name contains the query
-        if (name.startsWith(normalizedQuery)) {
-          matchingNames.add(product.name);
-        }
+        // Filter and extract matching product names
+        final matchingNames = <String>{};
         
-        // Also check singular/plural variations
-        if (normalizedQuery.endsWith('s') && normalizedQuery.length > 2) {
-          final singular = normalizedQuery.substring(0, normalizedQuery.length - 1);
-          if (name.contains(singular)) {
+        for (var product in products) {
+          final name = product.name.toLowerCase();
+          
+          // Check if name contains the query
+          if (name.startsWith(normalizedQuery)) {
             matchingNames.add(product.name);
-          }else {
-            final words = name.split(' ');
-            for (var word in words) {
-              if (word.startsWith(singular)) {
-                matchingNames.add(product.name);
-                break;
+          }
+          
+          // Also check singular/plural variations
+          if (normalizedQuery.endsWith('s') && normalizedQuery.length > 2) {
+            final singular = normalizedQuery.substring(0, normalizedQuery.length - 1);
+            if (name.contains(singular)) {
+              matchingNames.add(product.name);
+            } else {
+              final words = name.split(' ');
+              for (var word in words) {
+                if (word.startsWith(singular)) {
+                  matchingNames.add(product.name);
+                  break;
+                }
               }
             }
-          }
-
-         
-         }else {
-          final plural = normalizedQuery + 's';
-          if (name.startsWith(plural)) {
-            matchingNames.add(product.name);
           } else {
-            final words = name.split(' ');
-            for (var word in words) {
-              if (word.startsWith(plural)) {
-                matchingNames.add(product.name);
-                break;
+            final plural = normalizedQuery + 's';
+            if (name.startsWith(plural)) {
+              matchingNames.add(product.name);
+            } else {
+              final words = name.split(' ');
+              for (var word in words) {
+                if (word.startsWith(plural)) {
+                  matchingNames.add(product.name);
+                  break;
+                }
               }
             }
           }
+          
+          if (matchingNames.length >= limit) break;
         }
         
-        if (matchingNames.length >= limit) break;
+        return matchingNames.take(limit).toList();
       }
       
-      return matchingNames.take(limit).toList();
+      // Otherwise, query database directly
+      var query = _supabase
+          .from('products')
+          .select('name')
+          .eq('is_available', true)
+          .ilike('name', '%$partialQuery%');
+      
+      if (universityId != null) {
+        query = query.eq('university_id', universityId);
+      }
+      
+      final response = await query
+          .limit(limit * 2) // Get more to filter duplicates
+          .order('view_count', ascending: false);
+      
+      // Extract unique product names
+      final suggestions = <String>{};
+      for (var item in response as List) {
+        suggestions.add(item['name'] as String);
+        if (suggestions.length >= limit) break;
+      }
+      
+      return suggestions.toList();
+      
+    } catch (e) {
+      print('Error fetching search suggestions: $e');
+      return [];
     }
-    
-    // Otherwise, query database directly
-    var query = _supabase
-        .from('products')
-        .select('name')
-        .eq('is_available', true)
-        .ilike('name', '%$partialQuery%');
-    
-    if (universityId != null) {
-      query = query.eq('university_id', universityId);
-    }
-    
-    final response = await query
-        .limit(limit * 2) // Get more to filter duplicates
-        .order('view_count', ascending: false);
-    
-    // Extract unique product names
-    final suggestions = <String>{};
-    for (var item in response as List) {
-      suggestions.add(item['name'] as String);
-      if (suggestions.length >= limit) break;
-    }
-    
-    return suggestions.toList();
-    
-  } catch (e) {
-    print('Error fetching search suggestions: $e');
-    return [];
   }
-}
-
 
   Future<ProductModel?> getProductById(String productId) async {
     try {
@@ -402,6 +395,69 @@ Future<List<String>> getSearchSuggestions({
     } catch (e) {
       print('Error fetching product: $e');
       return null;
+    }
+  }
+
+  /// Get related products based on category and university
+  Future<List<ProductModel>> getRelatedProducts({
+    required String currentProductId,
+    required String categoryId,
+    required String universityId,
+    int limit = 10,
+  }) async {
+    try {
+      // Step 1: Try to get products from same university + category
+      var query = _supabase
+          .from('products')
+          .select('''
+            *,
+            categories(name),
+            sellers(full_name, business_name),
+            universities(name, short_name)
+          ''')
+          .eq('is_available', true)
+          .eq('category_id', categoryId)
+          .eq('university_id', universityId)
+          .neq('id', currentProductId); // Exclude current product
+
+      var response = await query
+          .limit(limit)
+          .order('view_count', ascending: false);
+
+      var products = (response as List)
+          .map((json) => _mapProductFromResponse(json as Map<String, dynamic>))
+          .toList();
+
+      // Step 2: If we don't have enough, add from same category (any university)
+      if (products.length < 5) {
+        var fallbackQuery = _supabase
+            .from('products')
+            .select('''
+              *,
+              categories(name),
+              sellers(full_name, business_name),
+              universities(name, short_name)
+            ''')
+            .eq('is_available', true)
+            .eq('category_id', categoryId)
+            .neq('id', currentProductId)
+            .neq('university_id', universityId); // Different university
+
+        var fallbackResponse = await fallbackQuery
+            .limit(limit - products.length)
+            .order('view_count', ascending: false);
+
+        final fallbackProducts = (fallbackResponse as List)
+            .map((json) => _mapProductFromResponse(json as Map<String, dynamic>))
+            .toList();
+
+        products.addAll(fallbackProducts);
+      }
+
+      return products;
+    } catch (e) {
+      print('Error fetching related products: $e');
+      return [];
     }
   }
 

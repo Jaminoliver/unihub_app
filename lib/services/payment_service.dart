@@ -102,7 +102,7 @@ class PaymentService {
         return totalAmount;
       case 'half':
         return totalAmount / 2;
-      case 'pay_on_delivery':
+      case 'pod': // <-- FIXED (was 'pay_on_delivery')
         return 0;
       default:
         return 0;
@@ -140,7 +140,7 @@ class PaymentService {
         return 'Full Payment';
       case 'half':
         return 'Half Payment';
-      case 'pay_on_delivery':
+      case 'pod': // <-- FIXED (was 'pay_on_delivery')
         return 'Pay on Delivery';
       default:
         return 'Unknown';
@@ -155,7 +155,7 @@ class PaymentService {
       case 'half':
         final halfAmount = amount / 2;
         return 'Pay ${formatAmount(halfAmount)} now, ${formatAmount(halfAmount)} on delivery';
-      case 'pay_on_delivery':
+      case 'pod': // <-- FIXED (was 'pay_on_delivery')
         return 'Pay ${formatAmount(amount)} when you receive your item';
       default:
         return '';
@@ -170,11 +170,11 @@ class PaymentService {
   /// Get valid payment methods based on product price (PRD Section 7)
   List<String> getValidPaymentMethods(double price) {
     if (price >= 35000) {
-      return ['full', 'half']; // Only full or half payment
+      return ['full', 'half']; // Only full or half payment [cite: 401, 402]
     } else if (price >= 20000) {
-      return ['full', 'half', 'pay_on_delivery']; // All options
+      return ['full', 'half', 'pod']; // All options [cite: 398, 399]
     } else {
-      return ['full', 'pay_on_delivery']; // Only full or POD
+      return ['full', 'pod']; // Only full or POD [cite: 395, 397]
     }
   }
 

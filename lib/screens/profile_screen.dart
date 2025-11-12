@@ -4,6 +4,7 @@ import '../services/profile_service.dart';
 import '../models/user_model.dart';
 import 'auth/login_screen.dart';
 import 'edit_profile_screen.dart';
+import '../widgets/unihub_loading_widget.dart';
 
 class AppTheme {
   static const orangeStart = Color(0xFFFF6B35);
@@ -193,20 +194,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       body: Center(
         child: Container(
           padding: EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            gradient: AppTheme.gradient,
-            shape: BoxShape.circle,
-            boxShadow: [
-              BoxShadow(
-                color: AppTheme.orangeStart.withOpacity(0.3),
-                blurRadius: 24,
-              ),
-            ],
-          ),
-          child: CircularProgressIndicator(
-            color: Colors.white,
-            strokeWidth: 3,
-          ),
+          child: UniHubLoader(size: 80),
         ),
       ),
     );

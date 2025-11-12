@@ -4,6 +4,7 @@ import '../constants/app_text_styles.dart';
 import '../models/order_model.dart';
 import '../services/order_service.dart';
 import '../services/auth_service.dart';
+import '../widgets/unihub_loading_widget.dart';
 import 'order_details_screen.dart';
 
 class OrdersScreen extends StatefulWidget {
@@ -14,11 +15,10 @@ class OrdersScreen extends StatefulWidget {
 }
 
 class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderStateMixin {
-  final OrderService _orderService = OrderService();
-  final AuthService _authService = AuthService();
-
+  final _orderService = OrderService();
+  final _authService = AuthService();
   late TabController _tabController;
-  List<OrderModel> _allOrders = [];
+  
   List<OrderModel> _activeOrders = [];
   List<OrderModel> _completedOrders = [];
   bool _isLoading = true;
@@ -37,34 +37,34 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
   }
 
   Future<void> _loadOrders() async {
+    // This first setState is safe, no await before it
     setState(() => _isLoading = true);
-
     try {
       final user = _authService.currentUser;
       if (user == null) {
-        setState(() => _isLoading = false);
+        // --- FIX: Added mounted check ---
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
         return;
       }
 
       final orders = await _orderService.getBuyerOrders(user.id);
-
-      setState(() {
-        _allOrders = orders;
-        _activeOrders = orders
-            .where((o) =>
-                !['delivered', 'cancelled', 'refunded'].contains(o.orderStatus))
-            .toList();
-        _completedOrders = orders
-            .where((o) =>
-                ['delivered', 'cancelled', 'refunded'].contains(o.orderStatus))
-            .toList();
-        _isLoading = false;
-      });
+      
+      // --- FIX: Added mounted check after await ---
+      if (mounted) {
+        setState(() {
+          _activeOrders = orders.where((o) => !['delivered', 'cancelled', 'refunded'].contains(o.orderStatus)).toList();
+          _completedOrders = orders.where((o) => ['delivered', 'cancelled', 'refunded'].contains(o.orderStatus)).toList();
+          _isLoading = false;
+        });
+      }
     } catch (e) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading orders: $e')),
-      );
+      // --- FIX: Added mounted check around all setState/Scaffold calls ---
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
     }
   }
 
@@ -75,8 +75,9 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        title: Text('My Orders', style: AppTextStyles.heading),
-        centerTitle: true,
+        automaticallyImplyLeading: false,
+        title: Text('Orders', style: AppTextStyles.heading.copyWith(fontSize: 16)),
+        centerTitle: false,
         bottom: TabBar(
           controller: _tabController,
           labelColor: Color(0xFFFF6B35),
@@ -84,80 +85,63 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
           indicatorColor: Color(0xFFFF6B35),
           indicatorWeight: 3,
           tabs: [
-            Tab(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text('Active'),
-                  if (_activeOrders.isNotEmpty) ...[
-                    SizedBox(width: 6),
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Color(0xFFFF6B35),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        '${_activeOrders.length}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-            Tab(
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text('History'),
-                  if (_completedOrders.isNotEmpty) ...[
-                    SizedBox(width: 6),
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.grey[400],
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Text(
-                        '${_completedOrders.length}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
+            _buildTab('Active', _activeOrders.length),
+            _buildTab('History', _completedOrders.length),
           ],
         ),
       ),
       body: _isLoading
-          ? Center(child: CircularProgressIndicator(color: Color(0xFFFF6B35)))
+          ? Center(child: UniHubLoader(size: 80))
           : RefreshIndicator(
               onRefresh: _loadOrders,
               color: Color(0xFFFF6B35),
               child: TabBarView(
                 controller: _tabController,
                 children: [
-                  _buildOrdersList(_activeOrders, isActive: true),
-                  _buildOrdersList(_completedOrders, isActive: false),
+                  _buildOrdersList(_activeOrders, true),
+                  _buildOrdersList(_completedOrders, false),
                 ],
               ),
             ),
     );
   }
 
-  Widget _buildOrdersList(List<OrderModel> orders, {required bool isActive}) {
+  Widget _buildTab(String label, int count) {
+    return Tab(
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(label),
+          if (count > 0) ...[
+            SizedBox(width: 6),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              decoration: BoxDecoration(
+                color: label == 'Active' ? Color(0xFFFF6B35) : Colors.grey[400],
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text('$count', style: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOrdersList(List<OrderModel> orders, bool isActive) {
     if (orders.isEmpty) {
-      return _buildEmptyState(isActive);
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(isActive ? Icons.shopping_bag_outlined : Icons.history, size: 80, color: Colors.grey[400]),
+            SizedBox(height: 16),
+            Text(isActive ? 'No Active Orders' : 'No Order History', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.grey[700])),
+            SizedBox(height: 8),
+            Text(isActive ? 'Your active orders will appear here' : 'Your completed orders will appear here', style: TextStyle(fontSize: 14, color: Colors.grey[600])),
+          ],
+        ),
+      );
     }
 
     return ListView.builder(
@@ -167,72 +151,20 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
     );
   }
 
-  Widget _buildEmptyState(bool isActive) {
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              isActive ? Icons.shopping_bag_outlined : Icons.history,
-              size: 80,
-              color: Colors.grey[400],
-            ),
-            SizedBox(height: 16),
-            Text(
-              isActive ? 'No Active Orders' : 'No Order History',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey[700],
-              ),
-            ),
-            SizedBox(height: 8),
-            Text(
-              isActive
-                  ? 'Your active orders will appear here'
-                  : 'Your completed orders will appear here',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildOrderCard(OrderModel order) {
     return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => OrderDetailsScreen(orderId: order.id),
-          ),
-        ).then((_) => _loadOrders()); // Reload when returning
-      },
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => OrderDetailsScreen(orderId: order.id))).then((_) => _loadOrders()),
       child: Container(
         margin: EdgeInsets.only(bottom: 12),
         padding: EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: Offset(0, 2),
-            ),
-          ],
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: Offset(0, 2))],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header: Order Number + Status
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -240,106 +172,36 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        order.orderNumber,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
-                          fontFamily: 'monospace',
-                        ),
-                      ),
+                      Text(order.orderNumber, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, fontFamily: 'monospace')),
                       SizedBox(height: 4),
-                      Text(
-                        _formatDate(order.createdAt),
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey[600],
-                        ),
-                      ),
+                      Text('${order.createdAt.day}/${order.createdAt.month}/${order.createdAt.year}', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
                     ],
                   ),
                 ),
-                _buildStatusBadge(order),
+                _buildStatusBadge(order.orderStatus, order.statusDisplayText),
               ],
             ),
-
             Divider(height: 20),
-
-            // Product Info
             Row(
               children: [
-                // Product Image
-                if (order.productImageUrl != null)
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.network(
-                      order.productImageUrl!,
-                      width: 60,
-                      height: 60,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => Container(
-                        width: 60,
-                        height: 60,
-                        color: Colors.grey[200],
-                        child: Icon(Icons.image, color: Colors.grey[400]),
-                      ),
-                    ),
-                  )
-                else
-                  Container(
-                    width: 60,
-                    height: 60,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[200],
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Icon(Icons.image, color: Colors.grey[400]),
-                  ),
-
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: order.productImageUrl != null
+                      ? Image.network(order.productImageUrl!, width: 60, height: 60, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _placeholderImage())
+                      : _placeholderImage(),
+                ),
                 SizedBox(width: 12),
-
-                // Product Details
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        order.productName ?? 'Product',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                      Text(order.productName ?? 'Product', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
                       SizedBox(height: 6),
                       Row(
                         children: [
-                          Text(
-                            'Qty: ${order.quantity}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey[600],
-                            ),
-                          ),
+                          Text('Qty: ${order.quantity}', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
                           SizedBox(width: 12),
-                          Container(
-                            padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: _getPaymentMethodColor(order.paymentMethod)
-                                  .withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(
-                              _getPaymentMethodLabel(order.paymentMethod),
-                              style: TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w600,
-                                color: _getPaymentMethodColor(order.paymentMethod),
-                              ),
-                            ),
-                          ),
+                          _buildPaymentBadge(order.paymentMethod),
                         ],
                       ),
                     ],
@@ -347,39 +209,19 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
                 ),
               ],
             ),
-
             Divider(height: 20),
-
-            // Footer: Price + Action
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Total Amount',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Colors.grey[600],
-                      ),
-                    ),
+                    Text('Total Amount', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
                     SizedBox(height: 2),
-                    Text(
-                      order.formattedTotal,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFFFF6B35),
-                      ),
-                    ),
+                    Text(order.formattedTotal, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFFFF6B35))),
                   ],
                 ),
-                Icon(
-                  Icons.arrow_forward_ios,
-                  size: 16,
-                  color: Colors.grey[400],
-                ),
+                Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey[400]),
               ],
             ),
           ],
@@ -388,81 +230,37 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
     );
   }
 
-  Widget _buildStatusBadge(OrderModel order) {
-    Color bgColor;
-    Color textColor;
+  Widget _placeholderImage() {
+    return Container(width: 60, height: 60, decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(8)), child: Icon(Icons.image, color: Colors.grey[400]));
+  }
 
-    switch (order.orderStatus) {
-      case 'pending':
-        bgColor = Colors.orange[50]!;
-        textColor = Colors.orange[700]!;
-        break;
-      case 'confirmed':
-        bgColor = Colors.blue[50]!;
-        textColor = Colors.blue[700]!;
-        break;
-      case 'shipped':
-        bgColor = Colors.purple[50]!;
-        textColor = Colors.purple[700]!;
-        break;
-      case 'delivered':
-        bgColor = Colors.green[50]!;
-        textColor = Colors.green[700]!;
-        break;
-      case 'cancelled':
-      case 'refunded':
-        bgColor = Colors.red[50]!;
-        textColor = Colors.red[700]!;
-        break;
-      default:
-        bgColor = Colors.grey[200]!;
-        textColor = Colors.grey[700]!;
-    }
-
+  Widget _buildStatusBadge(String status, String displayText) {
+    final colors = {
+      'pending': [Colors.orange[50]!, Colors.orange[700]!],
+      'confirmed': [Colors.blue[50]!, Colors.blue[700]!],
+      'shipped': [Colors.purple[50]!, Colors.purple[700]!],
+      'delivered': [Colors.green[50]!, Colors.green[700]!],
+      'cancelled': [Colors.red[50]!, Colors.red[700]!],
+      'refunded': [Colors.red[50]!, Colors.red[700]!],
+    };
+    final color = colors[status] ?? [Colors.grey[200]!, Colors.grey[700]!];
+    
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        order.statusDisplayText,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.bold,
-          color: textColor,
-        ),
-      ),
+      decoration: BoxDecoration(color: color[0], borderRadius: BorderRadius.circular(8)),
+      child: Text(displayText, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color[1])),
     );
   }
 
-  Color _getPaymentMethodColor(String method) {
-    switch (method) {
-      case 'full':
-        return Colors.green;
-      case 'half':
-        return Colors.orange;
-      case 'pay_on_delivery':
-        return Colors.blue;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  String _getPaymentMethodLabel(String method) {
-    switch (method) {
-      case 'full':
-        return 'Full';
-      case 'half':
-        return 'Half';
-      case 'pay_on_delivery':
-        return 'POD';
-      default:
-        return method;
-    }
-  }
-
-  String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year}';
+  Widget _buildPaymentBadge(String method) {
+    // --- FIX: Changed 'pay_on_delivery' to 'pod' ---
+    final colors = {'full': Colors.green, 'half': Colors.orange, 'pod': Colors.blue};
+    final labels = {'full': 'Full', 'half': 'Half', 'pod': 'POD'};
+    
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(color: (colors[method] ?? Colors.grey).withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
+      child: Text(labels[method] ?? method, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: colors[method] ?? Colors.grey)),
+    );
   }
 }

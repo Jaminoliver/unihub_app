@@ -247,6 +247,50 @@ class CartService {
     }
   }
 
+  // ---
+  // --- THIS IS THE NEW FUNCTION THAT WAS MISSING ---
+  // ---
+  /// Get a single cart item by its ID (for real-time updates)
+  Future<CartModel?> getCartItem(String cartItemId) async {
+    try {
+      final response = await _supabase
+          .from('cart')
+          .select('''
+            *,
+            products!inner(
+              *,
+              categories(name),
+              universities(name, short_name)
+            )
+          ''')
+          .eq('id', cartItemId)
+          .single();
+
+      // Fetch seller info separately
+      if (response['products'] != null && response['products']['seller_id'] != null) {
+        try {
+          final sellerResponse = await _supabase
+              .from('sellers')
+              .select('id, business_name, user_id')
+              .eq('id', response['products']['seller_id'])
+              .maybeSingle();
+          
+          if (sellerResponse != null) {
+            response['products']['seller'] = sellerResponse;
+          }
+        } catch (e) {
+          print('Error fetching seller: $e');
+        }
+      }
+
+      return CartModel.fromJson(response);
+    } catch (e) {
+      print('Error fetching single cart item: $e');
+      rethrow;
+    }
+  }
+  // --- END OF NEW FUNCTION ---
+
   /// Get cart item by product ID
   Future<CartModel?> getCartItemByProduct({
     required String userId,

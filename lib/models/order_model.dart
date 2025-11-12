@@ -8,7 +8,7 @@ class OrderModel {
   final int quantity;
   final double unitPrice;
   final double totalAmount;
-  final String paymentMethod; // 'full', 'half', 'pay_on_delivery'
+  final String paymentMethod; // 'full', 'half', 'pod'
   final String paymentStatus; // 'pending', 'completed', 'failed', 'refunded'
   final String orderStatus; // 'pending', 'confirmed', 'shipped', 'delivered', 'cancelled', 'refunded'
   final String? deliveryAddressId;
@@ -67,7 +67,6 @@ class OrderModel {
   });
 
   factory OrderModel.fromJson(Map<String, dynamic> json) {
-    // Extract nested product data
     final product = json['products'] as Map<String, dynamic>?;
     final seller = json['seller'] as Map<String, dynamic>?;
     final buyer = json['buyer'] as Map<String, dynamic>?;
@@ -101,19 +100,17 @@ class OrderModel {
       updatedAt: json['updated_at'] != null
           ? DateTime.parse(json['updated_at'] as String)
           : null,
-      // New payment tracking fields
       paymentReference: json['payment_reference'] as String?,
       transactionId: json['transaction_id'] as int?,
       paymentVerifiedAt: json['payment_verified_at'] != null
           ? DateTime.parse(json['payment_verified_at'] as String)
           : null,
-      // Joined data
       productName: product?['name'] as String?,
       productImageUrl:
           product?['image_urls'] != null &&
-              (product!['image_urls'] as List).isNotEmpty
-          ? (product['image_urls'] as List).first as String?
-          : null,
+                  (product!['image_urls'] as List).isNotEmpty
+              ? (product['image_urls'] as List).first as String?
+              : null,
       sellerName: seller?['full_name'] as String?,
       buyerName: buyer?['full_name'] as String?,
       deliveryAddress: address?['address_line'] as String?,
@@ -173,7 +170,8 @@ class OrderModel {
   // Payment method helpers
   bool get isFullPayment => paymentMethod == 'full';
   bool get isHalfPayment => paymentMethod == 'half';
-  bool get isPayOnDelivery => paymentMethod == 'pay_on_delivery';
+  // --- FIX: Changed 'pay_on_delivery' to 'pod' ---
+  bool get isPayOnDelivery => paymentMethod == 'pod';
 
   // Status display text
   String get statusDisplayText {

@@ -1,553 +1,300 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../models/order_model.dart';
-import '../models/address_model.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_text_styles.dart';
 import 'orders_screen.dart';
 
-/// Order Confirmation Screen
-/// Shows success message with order details and delivery codes
-class OrderConfirmationScreen extends StatelessWidget {
+class OrderConfirmationScreen extends StatefulWidget {
   final List<OrderModel> orders;
-  final DeliveryAddressModel deliveryAddress;
-  final String? paymentReference;
 
-  const OrderConfirmationScreen({
-    super.key,
-    required this.orders,
-    required this.deliveryAddress,
-    this.paymentReference,
-  });
+  const OrderConfirmationScreen({super.key, required this.orders});
 
-  String _formatPrice(double price) {
-    return '₦${price.toStringAsFixed(0).replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]},',
-    )}';
-  }
+  @override
+  State<OrderConfirmationScreen> createState() => _OrderConfirmationScreenState();
+}
 
-  void _copyToClipboard(BuildContext context, String text, String label) {
-    Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$label copied to clipboard'),
-        backgroundColor: Colors.green,
-        duration: Duration(seconds: 2),
-      ),
-    );
+class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> with SingleTickerProviderStateMixin {
+  late AnimationController _controller;
+  late Animation<double> _scaleAnimation;
+  late Animation<double> _fadeAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: Duration(milliseconds: 800));
+    _scaleAnimation = CurvedAnimation(parent: _controller, curve: Curves.elasticOut);
+    _fadeAnimation = CurvedAnimation(parent: _controller, curve: Curves.easeIn);
+    _controller.forward();
   }
 
   @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  double get _totalAmount => widget.orders.fold(0.0, (sum, o) => sum + o.totalAmount);
+  int get _totalItems => widget.orders.fold(0, (sum, o) => sum + o.quantity);
+
+  String _formatPrice(double price) => '₦${price.toStringAsFixed(0).replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]},')}';
+
+  @override
   Widget build(BuildContext context) {
-    final totalAmount = orders.fold(0.0, (sum, order) => sum + order.totalAmount);
-
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
+    return WillPopScope(
+      onWillPop: () async {
+        _navigateToOrders();
+        return false;
+      },
+      child: Scaffold(
         backgroundColor: Colors.white,
-        elevation: 0,
-        leading: SizedBox.shrink(), // No back button
-        title: Text(
-          'Order Confirmed',
-          style: AppTextStyles.heading.copyWith(fontSize: 18),
-        ),
-        centerTitle: true,
-      ),
-      body: ListView(
-        padding: EdgeInsets.all(16),
-        children: [
-          // Success Animation
-          _buildSuccessHeader(),
-
-          SizedBox(height: 24),
-
-          // Order Numbers Section
-          _buildOrderNumbersCard(context),
-
-          SizedBox(height: 16),
-
-          // Delivery Codes Section (Most Important!)
-          _buildDeliveryCodesCard(context),
-
-          SizedBox(height: 16),
-
-          // Payment Summary
-          _buildPaymentSummaryCard(totalAmount),
-
-          SizedBox(height: 16),
-
-          // Delivery Address
-          _buildDeliveryAddressCard(),
-
-          SizedBox(height: 24),
-
-          // Important Instructions
-          _buildInstructionsCard(),
-
-          SizedBox(height: 24),
-
-          // Action Buttons
-          _buildActionButtons(context),
-
-          SizedBox(height: 32),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSuccessHeader() {
-    return Container(
-      padding: EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0xFFFF6B35).withOpacity(0.3),
-            blurRadius: 20,
-            offset: Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(
-              Icons.check_circle,
-              color: Color(0xFFFF6B35),
-              size: 60,
-            ),
-          ),
-          SizedBox(height: 16),
-          Text(
-            'Order Placed Successfully!',
-            style: TextStyle(
-              fontSize: 22,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: 8),
-          Text(
-            '${orders.length} ${orders.length == 1 ? 'item' : 'items'} ordered',
-            style: TextStyle(
-              fontSize: 14,
-              color: Colors.white.withOpacity(0.9),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildOrderNumbersCard(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+        body: SafeArea(
+          child: Column(
             children: [
-              Icon(Icons.receipt_long, color: Color(0xFFFF6B35), size: 20),
-              SizedBox(width: 8),
-              Text(
-                'Order Numbers',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 12),
-          ...orders.map((order) => Padding(
-                padding: EdgeInsets.only(bottom: 8),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        order.orderNumber,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
-                          fontFamily: 'monospace',
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.copy, size: 18, color: Colors.grey[600]),
-                      onPressed: () => _copyToClipboard(
-                        context,
-                        order.orderNumber,
-                        'Order number',
-                      ),
-                      padding: EdgeInsets.zero,
-                      constraints: BoxConstraints(),
-                    ),
-                  ],
-                ),
-              )),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDeliveryCodesCard(BuildContext context) {
-    return Container(
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.green[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.green[200]!, width: 2),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.lock, color: Colors.green[700], size: 20),
-              SizedBox(width: 8),
-              Text(
-                'Delivery Codes',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.green[900],
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 4),
-          Text(
-            'Share ONLY when you receive your items',
-            style: TextStyle(
-              fontSize: 12,
-              color: Colors.green[800],
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-          SizedBox(height: 12),
-          ...orders.map((order) => Container(
-                margin: EdgeInsets.only(bottom: 12),
-                padding: EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.green[300]!),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      order.productName ?? 'Product',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey[700],
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Container(
-                          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.all(24),
+                  child: Column(
+                    children: [
+                      SizedBox(height: 40),
+                      ScaleTransition(
+                        scale: _scaleAnimation,
+                        child: Container(
+                          width: 120,
+                          height: 120,
                           decoration: BoxDecoration(
-                            color: Colors.green[100],
-                            borderRadius: BorderRadius.circular(8),
+                            color: Colors.green,
+                            shape: BoxShape.circle,
+                            boxShadow: [BoxShadow(color: Colors.green.withOpacity(0.3), blurRadius: 20, spreadRadius: 5)],
                           ),
-                          child: Text(
-                            order.deliveryCode ?? '------',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.green[900],
-                              fontFamily: 'monospace',
-                              letterSpacing: 4,
-                            ),
-                          ),
+                          child: Icon(Icons.check, size: 70, color: Colors.white),
                         ),
-                        IconButton(
-                          icon: Icon(Icons.copy, color: Colors.green[700]),
-                          onPressed: () => _copyToClipboard(
-                            context,
-                            order.deliveryCode ?? '',
-                            'Delivery code',
-                          ),
+                      ),
+                      SizedBox(height: 32),
+                      FadeTransition(
+                        opacity: _fadeAnimation,
+                        child: Column(
+                          children: [
+                            Text('Order Confirmed!', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.black)),
+                            SizedBox(height: 8),
+                            Text('Your ${widget.orders.length} order${widget.orders.length > 1 ? 's have' : ' has'} been placed successfully', 
+                              style: TextStyle(fontSize: 14, color: Colors.grey[600]), textAlign: TextAlign.center),
+                          ],
                         ),
-                      ],
-                    ),
-                  ],
+                      ),
+                      SizedBox(height: 40),
+                      _buildSummaryCard(),
+                      SizedBox(height: 24),
+                      _buildOrdersList(),
+                    ],
+                  ),
                 ),
-              )),
-        ],
+              ),
+              _buildBottomBar(),
+            ],
+          ),
+        ),
       ),
     );
   }
 
-  Widget _buildPaymentSummaryCard(double totalAmount) {
+  Widget _buildSummaryCard() {
     return Container(
-      padding: EdgeInsets.all(16),
+      padding: EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: Offset(0, 2),
-          ),
-        ],
+        gradient: LinearGradient(colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)]),
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Color(0xFFFF6B35).withOpacity(0.3), blurRadius: 15, offset: Offset(0, 8))],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Icon(Icons.payments, color: Color(0xFFFF6B35), size: 20),
-              SizedBox(width: 8),
-              Text(
-                'Payment Summary',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 12),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Total Amount',
-                style: TextStyle(fontSize: 14, color: Colors.grey[700]),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Total Orders', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                  SizedBox(height: 4),
+                  Text('${widget.orders.length}', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                ],
               ),
-              Text(
-                _formatPrice(totalAmount),
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFFFF6B35),
-                ),
+              Container(width: 1, height: 40, color: Colors.white24),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Total Items', style: TextStyle(color: Colors.white70, fontSize: 12)),
+                  SizedBox(height: 4),
+                  Text('$_totalItems', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold)),
+                ],
               ),
             ],
           ),
-          if (paymentReference != null) ...[
-            SizedBox(height: 8),
-            Text(
-              'Ref: $paymentReference',
-              style: TextStyle(fontSize: 11, color: Colors.grey[500]),
-            ),
-          ],
+          Divider(height: 24, color: Colors.white24),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Total Amount', style: TextStyle(color: Colors.white, fontSize: 14)),
+              Text(_formatPrice(_totalAmount), style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+            ],
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildDeliveryAddressCard() {
+  Widget _buildOrdersList() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Order Details', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black)),
+        SizedBox(height: 16),
+        ...widget.orders.map((order) => _buildOrderCard(order)),
+      ],
+    );
+  }
+
+  Widget _buildOrderCard(OrderModel order) {
     return Container(
+      margin: EdgeInsets.only(bottom: 12),
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: Offset(0, 2),
-          ),
-        ],
+        border: Border.all(color: Colors.grey.shade200),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: Offset(0, 2))],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.location_on, color: Color(0xFFFF6B35), size: 20),
+              Icon(Icons.receipt_long, size: 16, color: Color(0xFFFF6B35)),
               SizedBox(width: 8),
-              Text(
-                'Delivery Address',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
+              Expanded(
+                child: Text(order.orderNumber, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, fontFamily: 'monospace', color: Color(0xFFFF6B35))),
               ),
             ],
           ),
-          SizedBox(height: 12),
-          Text(
-            deliveryAddress.fullAddress,
-            style: TextStyle(
-              fontSize: 13,
-              color: Colors.grey[700],
-              height: 1.5,
+          if (order.deliveryCode != null && order.deliveryCode!.isNotEmpty) ...[
+            SizedBox(height: 12),
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.green[50],
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.green[200]!),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.lock, size: 16, color: Colors.green[700]),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Delivery Code', style: TextStyle(fontSize: 10, color: Colors.green[800], fontWeight: FontWeight.w600)),
+                        SizedBox(height: 2),
+                        Text(order.deliveryCode!, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green[900], fontFamily: 'monospace', letterSpacing: 4)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
+          ],
+          Divider(height: 20),
+          Row(
+            children: [
+              if (order.productImageUrl != null)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(order.productImageUrl!, width: 50, height: 50, fit: BoxFit.cover, 
+                    errorBuilder: (_, __, ___) => Container(width: 50, height: 50, color: Colors.grey[200], child: Icon(Icons.image, size: 20, color: Colors.grey[400]))),
+                )
+              else
+                Container(width: 50, height: 50, decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(8)), 
+                  child: Icon(Icons.image, size: 20, color: Colors.grey[400])),
+              SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(order.productName ?? 'Product', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
+                    SizedBox(height: 4),
+                    Text('Qty: ${order.quantity}', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(_formatPrice(order.totalAmount), style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFFFF6B35))),
+                  SizedBox(height: 4),
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: _getPaymentColor(order.paymentMethod).withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(_getPaymentLabel(order.paymentMethod), style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: _getPaymentColor(order.paymentMethod))),
+                  ),
+                ],
+              ),
+            ],
           ),
         ],
       ),
     );
   }
 
-  Widget _buildInstructionsCard() {
+  Widget _buildBottomBar() {
     return Container(
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.blue[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blue[200]!),
+        color: Colors.white,
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: Offset(0, -2))],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.info_outline, color: Colors.blue[700], size: 20),
-              SizedBox(width: 8),
-              Text(
-                'What Happens Next?',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blue[900],
-                ),
-              ),
-            ],
+      child: SafeArea(
+        top: false,
+        child: SizedBox(
+          width: double.infinity,
+          height: 52,
+          child: ElevatedButton(
+            onPressed: _navigateToOrders,
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Color(0xFFFF6B35),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              elevation: 0,
+            ),
+            child: Text('View My Orders', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
           ),
-          SizedBox(height: 12),
-          _buildInstructionItem('1', 'Seller will confirm your order'),
-          _buildInstructionItem('2', 'Item will be prepared for delivery'),
-          _buildInstructionItem('3', 'You\'ll receive the item at your address'),
-          _buildInstructionItem('4', 'Share delivery code to confirm receipt'),
-          _buildInstructionItem('5', 'Funds will be released to seller'),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildInstructionItem(String number, String text) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 24,
-            height: 24,
-            decoration: BoxDecoration(
-              color: Colors.blue[100],
-              shape: BoxShape.circle,
-            ),
-            child: Center(
-              child: Text(
-                number,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.blue[900],
-                ),
-              ),
-            ),
-          ),
-          SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.blue[800],
-                height: 1.4,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+ void _navigateToOrders() {
+  Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(
+    '/orders',
+    (route) => false,
+  );
+}
+
+  Color _getPaymentColor(String method) {
+    switch (method) {
+      case 'full': return Colors.green;
+      case 'half': return Colors.orange;
+      case 'pay_on_delivery': return Colors.blue;
+      default: return Colors.grey;
+    }
   }
 
-  Widget _buildActionButtons(BuildContext context) {
-    return Column(
-      children: [
-        ElevatedButton(
-          onPressed: () {
-            // Navigate to orders screen and clear navigation stack
-            Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (context) => OrdersScreen()),
-              (route) => route.isFirst,
-            );
-          },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Color(0xFFFF6B35),
-            padding: EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            elevation: 0,
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.receipt_long, color: Colors.white),
-              SizedBox(width: 8),
-              Text(
-                'View Orders',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-            ],
-          ),
-        ),
-        SizedBox(height: 12),
-        TextButton(
-          onPressed: () {
-            Navigator.pushNamedAndRemoveUntil(
-              context,
-              '/home',
-              (route) => false,
-            );
-          },
-          child: Text(
-            'Continue Shopping',
-            style: TextStyle(
-              fontSize: 14,
-              color: Color(0xFFFF6B35),
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-      ],
-    );
+  String _getPaymentLabel(String method) {
+    switch (method) {
+      case 'full': return 'FULL';
+      case 'half': return 'HALF';
+      case 'pay_on_delivery': return 'POD';
+      default: return method.toUpperCase();
+    }
   }
 }

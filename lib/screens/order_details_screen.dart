@@ -4,9 +4,8 @@ import '../models/order_model.dart';
 import '../services/order_service.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_text_styles.dart';
+import 'orders_screen.dart'; // Import orders screen
 
-/// Order Details Screen
-/// Shows complete details of a single order
 class OrderDetailsScreen extends StatefulWidget {
   final String orderId;
 
@@ -78,7 +77,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
             backgroundColor: Colors.green,
           ),
         );
-        _loadOrder(); // Reload order
+        _loadOrder();
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -111,19 +110,21 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Text(
-          'Order Details',
-          style: AppTextStyles.heading.copyWith(fontSize: 18),
-        ),
-        centerTitle: true,
-      ),
-      body: _isLoading
+  backgroundColor: Colors.white,
+  elevation: 0,
+  leading: IconButton(
+    icon: Icon(Icons.arrow_back, color: Colors.black),
+    onPressed: () {
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (context) => OrdersScreen()),
+        (route) => route.isFirst,
+      );
+    },
+  ),
+  title: Text('Order Details', style: AppTextStyles.heading.copyWith(fontSize: 18)),
+  centerTitle: true,
+),   body: _isLoading
           ? Center(child: CircularProgressIndicator(color: Color(0xFFFF6B35)))
           : _order == null
               ? _buildErrorState()
@@ -149,6 +150,8 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     );
   }
 
+  // ... Rest of the widgets remain the same ...
+  
   Widget _buildErrorState() {
     return Center(
       child: Column(
@@ -458,87 +461,74 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     );
   }
 
-  Widget _buildDeliveryConfirmationCard() {
-    return Container(
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.green[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.green[200]!),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.lock, color: Colors.green[700], size: 20),
-              SizedBox(width: 8),
-              Text(
-                'Confirm Delivery',
+ Widget _buildDeliveryConfirmationCard() {
+  // Check if delivery code exists
+  if (_order!.deliveryCode == null || _order!.deliveryCode!.isEmpty) {
+    return SizedBox.shrink(); // Don't show if no code
+  }
+
+  return Container(
+    padding: EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.green[50],
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: Colors.green[200]!),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Icon(Icons.lock, color: Colors.green[700], size: 20),
+            SizedBox(width: 8),
+            Text(
+              'Your Delivery Code',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.bold,
+                color: Colors.green[900],
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: 4),
+        Text(
+          'Share this code ONLY when you receive your item',
+          style: TextStyle(fontSize: 12, color: Colors.green[800], fontWeight: FontWeight.w500),
+        ),
+        SizedBox(height: 16),
+        // Display the code (not input)
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.green[300]!, width: 2),
+              ),
+              child: Text(
+                _order!.deliveryCode!,
                 style: TextStyle(
-                  fontSize: 15,
+                  fontSize: 32,
                   fontWeight: FontWeight.bold,
                   color: Colors.green[900],
+                  fontFamily: 'monospace',
+                  letterSpacing: 8,
                 ),
               ),
-            ],
-          ),
-          SizedBox(height: 4),
-          Text(
-            'Enter the 6-digit code when you receive your item',
-            style: TextStyle(fontSize: 12, color: Colors.green[800]),
-          ),
-          SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: _deliveryCodeController,
-                  keyboardType: TextInputType.number,
-                  maxLength: 6,
-                  decoration: InputDecoration(
-                    hintText: 'Enter code',
-                    counterText: '',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: Colors.green[300]!),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                      borderSide: BorderSide(color: Colors.green, width: 2),
-                    ),
-                    filled: true,
-                    fillColor: Colors.white,
-                  ),
-                ),
-              ),
-              SizedBox(width: 12),
-              ElevatedButton(
-                onPressed: _isConfirming ? null : _confirmDelivery,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.green,
-                  padding: EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: _isConfirming
-                    ? SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : Text('Confirm'),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+            ),
+            IconButton(
+              icon: Icon(Icons.copy, color: Colors.green[700], size: 28),
+              onPressed: () => _copyToClipboard(_order!.deliveryCode!, 'Delivery code'),
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
 
   Widget _buildInfoRow(String label, String value, IconData icon,
       {bool copyable = false, Color? color}) {

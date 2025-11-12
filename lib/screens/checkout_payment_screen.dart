@@ -9,9 +9,8 @@ import '../services/auth_service.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_text_styles.dart';
 import 'order_confirmation_screen.dart';
+import '../main.dart';
 
-/// Checkout Step 3: Payment Processing
-/// Handles payment via Paystack or Pay on Delivery
 class CheckoutPaymentScreen extends StatefulWidget {
   final List<CartModel> selectedItems;
   final Map<String, String> paymentMethods;
@@ -36,14 +35,12 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
 
   bool _isProcessing = false;
   String _currentStep = 'Initializing...';
+  bool _showSuccessAnimation = false;
 
   @override
   void initState() {
     super.initState();
-    // Auto-start checkout process
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _processCheckout();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _processCheckout());
   }
 
   double _calculateTotalAmount() {
@@ -60,12 +57,9 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
   }
 
   bool _requiresOnlinePayment() {
-    // Check if any item requires online payment
     for (final item in widget.selectedItems) {
       final paymentMethod = widget.paymentMethods[item.id] ?? 'full';
-      if (_paymentService.requiresOnlinePayment(paymentMethod)) {
-        return true;
-      }
+      if (_paymentService.requiresOnlinePayment(paymentMethod)) return true;
     }
     return false;
   }
@@ -78,103 +72,81 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
 
     try {
       final user = _authService.currentUser;
-      if (user == null) {
-        throw Exception('Please log in to continue');
-      }
+      if (user == null) throw Exception('Please log in to continue');
 
       final requiresPayment = _requiresOnlinePayment();
-String? paymentReference;
-int? transactionId;
+      String? paymentReference;
+      int? transactionId;
 
-// Step 1: Process payment if required
-if (requiresPayment) {
-  setState(() => _currentStep = 'Processing payment...');
+      if (requiresPayment) {
+        setState(() => _currentStep = 'Processing payment...');
+        final escrowAmount = _calculateEscrowAmount();
+        final userEmail = user.email ?? 'buyer@unihub.com';
 
-  final escrowAmount = _calculateEscrowAmount();
-  final userEmail = user.email ?? 'buyer@unihub.com';
+        final paymentResult = await _paymentService.processPayment(
+          context: context,
+          email: userEmail,
+          amount: escrowAmount,
+          currency: 'NGN',
+          metadata: {
+            'buyer_id': user.id,
+            'item_count': widget.selectedItems.length.toString(),
+            'delivery_address': widget.deliveryAddress.shortAddress,
+          },
+        );
 
-  final paymentResult = await _paymentService.processPayment(
-    context: context,
-    email: userEmail,
-    amount: escrowAmount,
-    currency: 'NGN',
-    metadata: {
-      'buyer_id': user.id,
-      'item_count': widget.selectedItems.length.toString(),
-      'delivery_address': widget.deliveryAddress.shortAddress,
-    },
-  );
+        if (paymentResult == null) {
+          if (mounted) {
+            _paymentService.showPaymentFailedDialog(
+              context,
+              'Payment was not completed. Please try again.',
+            );
+            Navigator.pop(context);
+          }
+          return;
+        }
 
-  if (paymentResult == null) {
-    // Payment failed or cancelled
-    if (mounted) {
-      _paymentService.showPaymentFailedDialog(
-        context,
-        'Payment was not completed. Please try again.',
-      );
-      Navigator.pop(context);
-    }
-    return;
-  }
+        paymentReference = paymentResult['reference'] as String?;
+        transactionId = paymentResult['transaction_id'] as int?;
+      }
 
-  // Extract values from the result Map
-  paymentReference = paymentResult['reference'] as String?;
-  transactionId = paymentResult['transaction_id'] as int?;
-}
-
-      // Step 2: Create orders
       setState(() => _currentStep = 'Creating orders...');
-
       final createdOrders = <OrderModel>[];
 
       for (final item in widget.selectedItems) {
         final product = item.product!;
         final paymentMethod = widget.paymentMethods[item.id] ?? 'full';
-        
-        // DEBUG PRINTS
-        print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-        print('DEBUG - Cart item ID: ${item.id}');
-        print('DEBUG - Product ID: ${product.id}');
-        print('DEBUG - Payment methods map: ${widget.paymentMethods}');
-        print('DEBUG - Selected payment method: "$paymentMethod"');
-        print('DEBUG - Payment method length: ${paymentMethod.length}');
-        print('DEBUG - Payment method bytes: ${paymentMethod.codeUnits}');
-        print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
         final order = await _orderService.createOrder(
           buyerId: user.id,
           sellerId: product.sellerId,
-          productId: product.id,
           quantity: item.quantity,
           unitPrice: product.price,
           totalAmount: item.totalPrice,
           paymentMethod: paymentMethod,
           deliveryAddressId: widget.deliveryAddress.id,
           paymentReference: paymentReference,
-          transactionId: transactionId,
+          transactionId: transactionId, productId: product.id,
         );
-
         createdOrders.add(order);
       }
 
-      // Step 3: Clear cart items
       setState(() => _currentStep = 'Finalizing...');
-
       for (final item in widget.selectedItems) {
         await _cartService.removeFromCart(item.id);
       }
 
-      // Step 4: Navigate to confirmation
+      setState(() => _showSuccessAnimation = true);
+      await Future.delayed(Duration(seconds: 2));
+
       if (mounted) {
-        Navigator.pushReplacement(
-          context,
+        // Navigate to Order Confirmation screen
+        // But clear the cart/checkout screens from the stack first
+        Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
           MaterialPageRoute(
-            builder: (context) => OrderConfirmationScreen(
-              orders: createdOrders,
-              deliveryAddress: widget.deliveryAddress,
-              paymentReference: paymentReference,
-            ),
+            builder: (context) => OrderConfirmationScreen(orders: createdOrders),
           ),
+          (route) => route.settings.name == '/home' || route.isFirst,
         );
       }
     } catch (e) {
@@ -195,6 +167,8 @@ if (requiresPayment) {
 
   @override
   Widget build(BuildContext context) {
+    if (_showSuccessAnimation) return _buildSuccessAnimation();
+
     final totalAmount = _calculateTotalAmount();
     final escrowAmount = _calculateEscrowAmount();
     final requiresPayment = _requiresOnlinePayment();
@@ -204,96 +178,66 @@ if (requiresPayment) {
       appBar: AppBar(
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: _isProcessing
-            ? SizedBox.shrink()
-            : IconButton(
-                icon: Icon(Icons.arrow_back, color: Colors.black),
-                onPressed: () => Navigator.pop(context),
-              ),
-        title: Text(
-          'Payment',
-          style: AppTextStyles.heading.copyWith(fontSize: 18),
+        leading: _isProcessing ? SizedBox.shrink() : IconButton(
+          icon: Icon(Icons.arrow_back, color: Colors.black),
+          onPressed: () => Navigator.pop(context),
         ),
+        title: Text('Payment', style: AppTextStyles.heading.copyWith(fontSize: 18)),
         centerTitle: true,
       ),
       body: Column(
         children: [
-          // Progress Indicator
           Container(
             color: Colors.white,
             padding: EdgeInsets.symmetric(vertical: 16),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _buildStepIndicator('1', 'Review', true, true),
-                _buildStepLine(true),
-                _buildStepIndicator('2', 'Address', true, true),
-                _buildStepLine(true),
-                _buildStepIndicator('3', 'Payment', true, !_isProcessing),
+                _buildStep('1', 'Review', true, true),
+                _buildLine(true),
+                _buildStep('2', 'Address', true, true),
+                _buildLine(true),
+                _buildStep('3', 'Payment', true, !_isProcessing),
               ],
             ),
           ),
-
           Expanded(
             child: Center(
               child: Padding(
                 padding: EdgeInsets.all(32),
-                child: Column(
+                child: _isProcessing ? Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // Processing Animation
-                    if (_isProcessing) ...[
-                      Container(
-                        width: 120,
-                        height: 120,
-                        decoration: BoxDecoration(
-                          color: Color(0xFFFF6B35).withOpacity(0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Center(
-                          child: CircularProgressIndicator(
-                            color: Color(0xFFFF6B35),
-                            strokeWidth: 4,
-                          ),
+                    Container(
+                      width: 120,
+                      height: 120,
+                      decoration: BoxDecoration(
+                        color: Color(0xFFFF6B35).withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFFFF6B35),
+                          strokeWidth: 4,
                         ),
                       ),
-                      SizedBox(height: 32),
-                      Text(
-                        _currentStep,
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.black87,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      SizedBox(height: 12),
-                      Text(
-                        'Please wait...',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-                    ] else ...[
-                      // Payment Summary
-                      Icon(
-                        Icons.payment,
-                        size: 80,
-                        color: Color(0xFFFF6B35),
-                      ),
-                      SizedBox(height: 24),
-                      Text(
-                        requiresPayment ? 'Secure Payment' : 'Pay on Delivery',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black87,
-                        ),
-                      ),
-                      SizedBox(height: 32),
-                      _buildAmountCard(totalAmount, escrowAmount, requiresPayment),
-                    ],
+                    ),
+                    SizedBox(height: 32),
+                    Text(_currentStep, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600), textAlign: TextAlign.center),
+                    SizedBox(height: 12),
+                    Text('Please wait...', style: TextStyle(fontSize: 14, color: Colors.grey[600])),
+                  ],
+                ) : Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.payment, size: 80, color: Color(0xFFFF6B35)),
+                    SizedBox(height: 24),
+                    Text(
+                      requiresPayment ? 'Secure Payment' : 'Pay on Delivery',
+                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                    ),
+                    SizedBox(height: 32),
+                    _buildAmountCard(totalAmount, escrowAmount, requiresPayment),
                   ],
                 ),
               ),
@@ -304,7 +248,44 @@ if (requiresPayment) {
     );
   }
 
-  Widget _buildStepIndicator(String number, String label, bool active, bool completed) {
+  Widget _buildSuccessAnimation() {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            TweenAnimationBuilder(
+              tween: Tween<double>(begin: 0, end: 1),
+              duration: Duration(milliseconds: 600),
+              curve: Curves.elasticOut,
+              builder: (context, double value, child) {
+                return Transform.scale(
+                  scale: value,
+                  child: Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      color: Colors.green,
+                      shape: BoxShape.circle,
+                      boxShadow: [BoxShadow(color: Colors.green.withOpacity(0.3), blurRadius: 20, spreadRadius: 5)],
+                    ),
+                    child: Icon(Icons.check, size: 70, color: Colors.white),
+                  ),
+                );
+              },
+            ),
+            SizedBox(height: 32),
+            Text('Payment Successful!', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            SizedBox(height: 8),
+            Text('Redirecting to orders...', style: TextStyle(fontSize: 14, color: Colors.grey[600])),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStep(String number, String label, bool active, bool completed) {
     return Column(
       children: [
         Container(
@@ -317,29 +298,16 @@ if (requiresPayment) {
           child: Center(
             child: completed
                 ? Icon(Icons.check, color: Colors.white, size: 18)
-                : Text(
-                    number,
-                    style: TextStyle(
-                      color: active ? Colors.white : Colors.grey[600],
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                : Text(number, style: TextStyle(color: active ? Colors.white : Colors.grey[600], fontWeight: FontWeight.bold)),
           ),
         ),
         SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            color: active ? Color(0xFFFF6B35) : Colors.grey[600],
-            fontWeight: active ? FontWeight.w600 : FontWeight.normal,
-          ),
-        ),
+        Text(label, style: TextStyle(fontSize: 11, color: active ? Color(0xFFFF6B35) : Colors.grey[600])),
       ],
     );
   }
 
-  Widget _buildStepLine(bool active) {
+  Widget _buildLine(bool active) {
     return Container(
       width: 40,
       height: 2,
@@ -354,34 +322,15 @@ if (requiresPayment) {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 20,
-            offset: Offset(0, 4),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20, offset: Offset(0, 4))],
       ),
       child: Column(
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Total Amount',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey[700],
-                ),
-              ),
-              Text(
-                _paymentService.formatAmount(totalAmount),
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black87,
-                ),
-              ),
+              Text('Total Amount', style: TextStyle(fontSize: 14, color: Colors.grey[700])),
+              Text(_paymentService.formatAmount(totalAmount), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
             ],
           ),
           if (requiresPayment) ...[
@@ -389,22 +338,8 @@ if (requiresPayment) {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(
-                  'Pay Now',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFFFF6B35),
-                  ),
-                ),
-                Text(
-                  _paymentService.formatAmount(escrowAmount),
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFFFF6B35),
-                  ),
-                ),
+                Text('Pay Now', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFFFF6B35))),
+                Text(_paymentService.formatAmount(escrowAmount), style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFFFF6B35))),
               ],
             ),
           ],

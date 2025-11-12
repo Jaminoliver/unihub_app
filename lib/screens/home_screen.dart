@@ -18,6 +18,8 @@ import '../widgets/empty_states.dart';
 import './product_details_screen.dart';
 import './search_screen.dart';
 import './category_products_screen.dart';
+import './notifications_screen.dart';
+import '../widgets/unihub_loading_widget.dart'; // Added UniHubLoader import
 
 class HomeScreen extends StatefulWidget {
   final ScrollController? scrollController;
@@ -373,6 +375,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   @override
   Widget build(BuildContext context) {
+    // If initial data is loading, show the full screen loader
+    if (_isLoadingData) return _buildInitialLoader();
+
     return Scaffold(
       backgroundColor: AppColors.background,
       body: NestedScrollView(
@@ -388,7 +393,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 onLocationTap: _showCampusSelectorBottomSheet,
                 onSearchTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => SearchScreen(universityId: _selectedUniversityId, universityName: _selectedCampus, state: _selectedState))),
                 onCartTap: () {},
-                onNotificationTap: () {},
+                onNotificationTap: () => Navigator.push(
+                  context, 
+                  MaterialPageRoute(builder: (context) => const NotificationsScreen())
+                ),
               ),
             ),
             SliverToBoxAdapter(
@@ -426,6 +434,18 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       ),
     );
   }
+
+  // --- NEW LOADER METHOD ---
+  Widget _buildInitialLoader() {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: Center(
+        child: UniHubLoader(size: 80),
+      ),
+    );
+  }
+  // --- END NEW LOADER METHOD ---
+
 
   List<ProductModel> _getFilteredProductsForTab(int tabIndex) {
     switch (tabIndex) {
@@ -862,7 +882,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         final filteredUniversities = _getFilteredUniversities();
         final hasState = _selectedState.isNotEmpty && _selectedState != 'State';
         final stateDisplayName = hasState ? _selectedState.toUpperCase() : 'Select State';
-        return Column(children: [Padding(padding: const EdgeInsets.all(16), child: Column(children: [Text('Select university — $stateDisplayName', style: AppTextStyles.heading.copyWith(fontSize: 18, fontWeight: FontWeight.bold)), if (!hasState) ...[const SizedBox(height: 8), Text('Please set your state first', style: AppTextStyles.body.copyWith(fontSize: 13, color: AppColors.textLight))]])), const Divider(height: 1), Expanded(child: filteredUniversities.isEmpty ? Center(child: _isLoadingData ? const CircularProgressIndicator() : Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.school_outlined, size: 64, color: AppColors.textLight.withOpacity(0.5)), const SizedBox(height: 16), Text('No universities found in this state', style: AppTextStyles.body.copyWith(color: AppColors.textLight)), if (!hasState) ...[const SizedBox(height: 24), ElevatedButton(onPressed: () { Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('State selection coming soon'))); }, style: ElevatedButton.styleFrom(backgroundColor: Color(0xFFFF6B35), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)), child: const Text('Set my state'))]])) : ListView.builder(controller: scrollController, itemCount: filteredUniversities.length, itemBuilder: (context, index) { final uni = filteredUniversities[index]; final isSelected = uni.id == _selectedUniversityId; return ListTile(leading: Icon(Icons.school, color: isSelected ? Color(0xFFFF6B35) : AppColors.textLight), title: Text(uni.name, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)), subtitle: Text(uni.shortName, style: TextStyle(color: AppColors.textLight, fontSize: 12)), trailing: isSelected ? Icon(Icons.check_circle, color: Color(0xFFFF6B35)) : null, onTap: () => _onCampusChanged(uni)); })), if (!hasState) Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: AppColors.background, border: Border(top: BorderSide(color: AppColors.textLight.withOpacity(0.2)))), child: SizedBox(width: double.infinity, child: ElevatedButton(onPressed: () { Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('State selection coming soon'))); }, style: ElevatedButton.styleFrom(backgroundColor: Color(0xFFFF6B35), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: const Text('Set my state', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)))))]);
+        return Column(children: [Padding(padding: const EdgeInsets.all(16), child: Column(children: [Text('Select university — $stateDisplayName', style: AppTextStyles.heading.copyWith(fontSize: 18, fontWeight: FontWeight.bold)), if (!hasState) ...[const SizedBox(height: 8), Text('Please set your state first', style: AppTextStyles.body.copyWith(fontSize: 13, color: AppColors.textLight))]])), const Divider(height: 1), Expanded(child: filteredUniversities.isEmpty ? Center(child: _isLoadingData ? const UniHubLoader(size: 40) : Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.school_outlined, size: 64, color: AppColors.textLight.withOpacity(0.5)), const SizedBox(height: 16), Text('No universities found in this state', style: AppTextStyles.body.copyWith(color: AppColors.textLight)), if (!hasState) ...[const SizedBox(height: 24), ElevatedButton(onPressed: () { Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('State selection coming soon'))); }, style: ElevatedButton.styleFrom(backgroundColor: Color(0xFFFF6B35), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12)), child: const Text('Set my state'))]])) : ListView.builder(controller: scrollController, itemCount: filteredUniversities.length, itemBuilder: (context, index) { final uni = filteredUniversities[index]; final isSelected = uni.id == _selectedUniversityId; return ListTile(leading: Icon(Icons.school, color: isSelected ? Color(0xFFFF6B35) : AppColors.textLight), title: Text(uni.name, style: TextStyle(fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)), subtitle: Text(uni.shortName, style: TextStyle(color: AppColors.textLight, fontSize: 12)), trailing: isSelected ? Icon(Icons.check_circle, color: Color(0xFFFF6B35)) : null, onTap: () => _onCampusChanged(uni)); })), if (!hasState) Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: AppColors.background, border: Border(top: BorderSide(color: AppColors.textLight.withOpacity(0.2)))), child: SizedBox(width: double.infinity, child: ElevatedButton(onPressed: () { Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('State selection coming soon'))); }, style: ElevatedButton.styleFrom(backgroundColor: Color(0xFFFF6B35), foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 14), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12))), child: const Text('Set my state', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)))))]);
       }),
     );
   }

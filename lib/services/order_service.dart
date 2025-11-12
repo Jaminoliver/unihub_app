@@ -1,12 +1,14 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/order_model.dart';
+import '../models/notification_model.dart';
+import '../services/payment_service.dart';
+import '../services/notification_service.dart';
 
-/// Order Service - Manages order operations
 class OrderService {
   final SupabaseClient _supabase = Supabase.instance.client;
+  final PaymentService _paymentService = PaymentService();
+  final NotificationService _notificationService = NotificationService();
 
-  /// Create a new order from cart items
-  /// Returns the created order
   Future<OrderModel> createOrder({
     required String buyerId,
     required String sellerId,
@@ -14,20 +16,15 @@ class OrderService {
     required int quantity,
     required double unitPrice,
     required double totalAmount,
-    required String paymentMethod, // 'full', 'half', 'pay_on_delivery'
+    required String paymentMethod,
     required String? deliveryAddressId,
-    String? paymentReference, // Paystack reference for online payments
-    int? transactionId, // Paystack transaction ID
+    String? paymentReference,
+    int? transactionId,
     String? notes,
   }) async {
     try {
+      final double escrowAmount = _paymentService.calculateEscrowAmount(totalAmount, paymentMethod);
 
-      // ADD THESE DEBUG PRINTS HERE
-      print('DEBUG - Payment method value: "$paymentMethod"');
-      print('DEBUG - Payment method type: ${paymentMethod.runtimeType}');
-      print('DEBUG - Payment method length: ${paymentMethod.length}');
-    
-      // Insert order
       final response = await _supabase
         .from('orders')
         .insert({
@@ -38,13 +35,14 @@ class OrderService {
           'unit_price': unitPrice,
           'total_amount': totalAmount,
           'payment_method': paymentMethod,
-          'payment_status': paymentMethod == 'pay_on_delivery' ? 'pending' : 'completed',
+          'payment_status': paymentMethod == 'pod' ? 'pending' : 'completed',
           'payment_reference': paymentReference,
-          'payment_verified_at': paymentMethod != 'pay_on_delivery' ? DateTime.now().toIso8601String() : null,
+          'payment_verified_at': paymentMethod != 'pod' ? DateTime.now().toIso8601String() : null,
           'transaction_id': transactionId,
           'delivery_address_id': deliveryAddressId,
           'notes': notes,
           'created_at': DateTime.now().toIso8601String(),
+          'escrow_amount': escrowAmount,
         })
         .select('''
           *,
@@ -52,18 +50,39 @@ class OrderService {
           sellers!seller_id(id, business_name, user_id),
           buyer:profiles!buyer_id(full_name, phone_number),
           delivery_addresses(address_line, city, state, landmark)
-     ''')
+        ''')
         .single();
+      
+      final newOrder = OrderModel.fromJson(response);
+      final productName = newOrder.productName ?? 'your item';
 
-      return OrderModel.fromJson(response);
+      await _notificationService.createNotification(
+        userId: buyerId,
+        type: NotificationType.orderPlaced,
+        title: 'Order Placed Successfully',
+        message: '$productName - Order #${newOrder.orderNumber}',
+        orderNumber: newOrder.orderNumber,
+        amount: newOrder.totalAmount,
+      );
+
+      if (escrowAmount > 0) {
+        await _notificationService.createNotification(
+          userId: buyerId,
+          type: NotificationType.paymentEscrow,
+          title: 'Payment Secured',
+          message: 'Your payment of ₦${escrowAmount.toStringAsFixed(0)} for $productName is in escrow.',
+          orderNumber: newOrder.orderNumber,
+          amount: escrowAmount,
+        );
+      }
+
+      return newOrder;
     } catch (e) {
       print('Error creating order: $e');
       rethrow;
     }
   }
 
-  /// Create multiple orders from selected cart items
-  /// Used during checkout when user selects multiple items
   Future<List<OrderModel>> createMultipleOrders({
     required String buyerId,
     required List<Map<String, dynamic>> orderItems,
@@ -99,7 +118,6 @@ class OrderService {
     }
   }
 
-  /// Get all orders for a buyer
   Future<List<OrderModel>> getBuyerOrders(String buyerId) async {
     try {
       final response = await _supabase
@@ -122,7 +140,6 @@ class OrderService {
     }
   }
 
-  /// Get all orders for a seller
   Future<List<OrderModel>> getSellerOrders(String sellerId) async {
     try {
       final response = await _supabase
@@ -145,7 +162,6 @@ class OrderService {
     }
   }
 
-  /// Get a single order by ID
   Future<OrderModel?> getOrderById(String orderId) async {
     try {
       final response = await _supabase
@@ -153,7 +169,7 @@ class OrderService {
           .select('''
             *,
             products(name, image_urls, description, seller_id),
-            sellers!seller_id(id, business_name, user_id),
+            sellers!seller_id(id, business_name, user_id, bank_account_number, bank_code, account_name),
             buyer:profiles!buyer_id(full_name, phone_number),
             delivery_addresses(address_line, city, state, landmark, phone_number)
           ''')
@@ -166,8 +182,7 @@ class OrderService {
       return null;
     }
   }
-
-  /// Get order by order number
+  
   Future<OrderModel?> getOrderByNumber(String orderNumber) async {
     try {
       final response = await _supabase
@@ -189,7 +204,6 @@ class OrderService {
     }
   }
 
-  /// Update order status
   Future<bool> updateOrderStatus(String orderId, String newStatus) async {
     try {
       await _supabase
@@ -207,77 +221,78 @@ class OrderService {
     }
   }
 
-  /// Update payment status
   Future<bool> updatePaymentStatus(
-  String orderId,
-  String paymentStatus, {
-  String? paymentReference,
-  int? transactionId,
-}) async {
-  try {
-    final Map<String, dynamic> updateData = { // ✅ Add explicit type here
-      'payment_status': paymentStatus,
-      'updated_at': DateTime.now().toIso8601String(),
-    };
-
-    if (paymentReference != null) {
-      updateData['payment_reference'] = paymentReference;
-    }
-
-    if (transactionId != null) {
-      updateData['transaction_id'] = transactionId;
-    }
-
-    if (paymentStatus == 'completed') {
-      updateData['payment_verified_at'] = DateTime.now().toIso8601String();
-    }
-
-    await _supabase.from('orders').update(updateData).eq('id', orderId);
-
-    return true;
-  } catch (e) {
-    print('Error updating payment status: $e');
-    return false;
-  }
-}
-
-  /// Confirm delivery with 6-digit code
-  Future<bool> confirmDelivery(String orderId, String deliveryCode) async {
+    String orderId,
+    String paymentStatus, {
+    String? paymentReference,
+    int? transactionId,
+  }) async {
     try {
-      // Get order to verify delivery code
-      final order = await getOrderById(orderId);
+      final Map<String, dynamic> updateData = {
+        'payment_status': paymentStatus,
+        'updated_at': DateTime.now().toIso8601String(),
+      };
 
-      if (order == null) {
-        print('Order not found');
-        return false;
+      if (paymentReference != null) {
+        updateData['payment_reference'] = paymentReference;
       }
 
-      if (order.deliveryCode != deliveryCode) {
-        print('Invalid delivery code');
-        return false;
+      if (transactionId != null) {
+        updateData['transaction_id'] = transactionId;
       }
 
-      // Update order status to delivered and release escrow
-      await _supabase
-          .from('orders')
-          .update({
-            'order_status': 'delivered',
-            'delivery_confirmed_at': DateTime.now().toIso8601String(),
-            'escrow_released': true,
-            'updated_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', orderId);
+      if (paymentStatus == 'completed') {
+        updateData['payment_verified_at'] = DateTime.now().toIso8601String();
+      }
+
+      await _supabase.from('orders').update(updateData).eq('id', orderId);
 
       return true;
     } catch (e) {
-      print('Error confirming delivery: $e');
+      print('Error updating payment status: $e');
       return false;
     }
   }
 
-  /// Cancel order (buyer or seller)
+  Future<bool> confirmDelivery(String orderId, String deliveryCode) async {
+    try {
+      // Call the secure Edge Function to handle confirmation and payout
+      final response = await _supabase.functions.invoke(
+        'release-escrow',
+        body: {
+          'orderId': orderId,
+          'deliveryCode': deliveryCode,
+        },
+      );
+
+      // Check for a non-successful HTTP status (e.g., 400, 500)
+      if (response.status != null && response.status! >= 300) {
+        String errorMessage = 'Failed to confirm delivery.';
+        // Check if the function sent back a specific error message
+        if (response.data != null && response.data['error'] != null) {
+          errorMessage = response.data['error'] as String;
+        }
+        print('Error from release-escrow function: $errorMessage');
+        throw Exception(errorMessage);
+      }
+
+      // If status is 2xx, it was successful
+      print('Edge function success: ${response.data['message']}');
+      
+      // The Edge Function now handles all notifications and DB updates
+      return true;
+
+    } catch (e) {
+      // This will catch both network errors and the exception we threw above
+      print('Error calling confirmDelivery: $e');
+      rethrow;
+    }
+  }
+
   Future<bool> cancelOrder(String orderId, String? reason) async {
     try {
+      // TODO: Add logic to call a 'refund-escrow' Edge Function if order was paid
+
       await _supabase
           .from('orders')
           .update({
@@ -294,7 +309,6 @@ class OrderService {
     }
   }
 
-  /// Get active orders count (for buyer)
   Future<int> getActiveOrdersCount(String buyerId) async {
     try {
       final response = await _supabase
@@ -311,7 +325,6 @@ class OrderService {
     }
   }
 
-  /// Get orders by status
   Future<List<OrderModel>> getOrdersByStatus(
     String userId,
     List<String> statuses, {
@@ -339,14 +352,13 @@ class OrderService {
     }
   }
 
-  /// Get total spent by buyer
   Future<double> getTotalSpent(String buyerId) async {
     try {
       final response = await _supabase
           .from('orders')
           .select('total_amount')
           .eq('buyer_id', buyerId)
-          .inFilter('payment_status', ['completed', 'paid']); // Support both old and new status
+          .inFilter('payment_status', ['completed', 'paid']);
 
       double total = 0.0;
       for (final order in response) {
@@ -360,7 +372,6 @@ class OrderService {
     }
   }
 
-  /// Check if buyer has purchased a specific product
   Future<bool> hasPurchased(String buyerId, String productId) async {
     try {
       final response = await _supabase
