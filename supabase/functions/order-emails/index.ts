@@ -248,7 +248,7 @@ serve(async (req: Request) => {
         console.error('⚠️ Seller user_id not found, skipping notification');
       }
 
-      // Push Notification (Buyer)
+      // Push Notification (Buyer) - Order Confirmed
       if (buyerUserId) {
         await sendPushNotification(
           buyerUserId,
@@ -259,6 +259,18 @@ serve(async (req: Request) => {
         );
       } else {
         console.error('⚠️ Buyer user_id not found, skipping notification');
+      }
+
+      // Push Notification (Buyer) - Payment Secured (if paid online)
+      if (buyerUserId && orderData.payment_method !== 'pod') {
+        const escrowAmount = Number(orderData.escrow_amount || 0);
+        await sendPushNotification(
+          buyerUserId,
+          'Payment Secured 🔒',
+          `₦${escrowAmount.toFixed(0)} is held securely in escrow for order #${orderNumber}`,
+          record.id,
+          productName
+        );
       }
 
     } else if (type === 'UPDATE') {
