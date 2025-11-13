@@ -1,15 +1,17 @@
 plugins {
     id("com.android.application")
+    id("com.google.gms.google-services")
     id("kotlin-android")
     id("dev.flutter.flutter-gradle-plugin")
 }
 
 android {
     namespace = "com.example.unihub"
-    compileSdk = 36  // ✅ Updated from flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
@@ -20,12 +22,10 @@ android {
 
     defaultConfig {
         applicationId = "com.example.unihub"
-        minSdk = flutter.minSdkVersion  // ✅ Set explicitly instead of flutter.minSdkVersion
+        minSdk = flutter.minSdkVersion
         targetSdk = 34
         versionCode = 1
         versionName = "1.0.0"
-        
-        // Enable multidex for large apps
         multiDexEnabled = true
     }
 
@@ -41,6 +41,6 @@ flutter {
 }
 
 dependencies {
-    // Multidex support for large apps
     implementation("androidx.multidex:multidex:2.0.1")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
 }

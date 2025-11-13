@@ -1,9 +1,15 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart'; // <-- THIS IS THE MISSING LINE
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_paystack/flutter_paystack.dart';
 
+// New Firebase imports
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+import 'services/push_notification_service.dart'; // This will show an error until we create it
+
+// Your existing screen imports
 import 'screens/splash_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/categories_screen.dart';
@@ -22,8 +28,17 @@ final paystackPlugin = PaystackPlugin();
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Initialize Firebase
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
+  // Your existing initializations
   await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
   await paystackPlugin.initialize(publicKey: 'pk_test_611362c58ad79b5446897d88ef3d2f9c8b5b88d6');
+
+  // Initialize our new service
+  await PushNotificationService().init();
 
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(statusBarColor: Colors.transparent, statusBarIconBrightness: Brightness.dark),
@@ -34,6 +49,9 @@ void main() async {
 
 final supabase = Supabase.instance.client;
 
+//
+// --- THE REST OF YOUR CODE IS UNCHANGED ---
+//
 class UniHubApp extends StatelessWidget {
   const UniHubApp({super.key});
 
@@ -99,7 +117,6 @@ class _BottomNavBarState extends State<BottomNavBar> {
   }
 
   void _onItemTapped(int index) {
-    // Always refresh Cart when switching to it
     if (index == 2) {
       setState(() {
         _selectedIndex = 2;
@@ -108,7 +125,6 @@ class _BottomNavBarState extends State<BottomNavBar> {
       return;
     }
 
-    // Always refresh Orders when switching to it
     if (index == 3) {
       setState(() {
         _selectedIndex = 3;
@@ -141,7 +157,6 @@ class _BottomNavBarState extends State<BottomNavBar> {
       return;
     }
 
-    // Pop to first route for other tabs when tapped again
     _navigatorKeys[index].currentState?.popUntil((route) => route.isFirst);
   }
 
@@ -155,7 +170,6 @@ class _BottomNavBarState extends State<BottomNavBar> {
         return !canPop;
       },
       child: Scaffold(
-        // All screens now have their own AppBars, so no AppBar needed here
         appBar: null,
         body: Stack(
           children: List.generate(5, (index) {

@@ -4,7 +4,7 @@ import '../models/order_model.dart';
 import '../services/order_service.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_text_styles.dart';
-import 'orders_screen.dart'; // Import orders screen
+import 'orders_screen.dart';
 
 class OrderDetailsScreen extends StatefulWidget {
   final String orderId;
@@ -25,6 +25,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   OrderModel? _order;
   bool _isLoading = true;
   bool _isConfirming = false;
+  bool _isCancelling = false;
 
   @override
   void initState() {
@@ -95,6 +96,101 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
+  Future<void> _cancelOrder() async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Cancel Order?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Are you sure you want to cancel this order?'),
+            SizedBox(height: 12),
+            if (_order!.paymentMethod != 'pod') ...[
+              Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.green[50],
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.green[200]!),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.info_outline, color: Colors.green[700], size: 20),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Your payment of ₦${_order!.escrowAmount?.toStringAsFixed(0)} will be refunded within 5-7 business days.',
+                        style: TextStyle(fontSize: 12, color: Colors.green[900]),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('No, Keep Order', style: TextStyle(color: Colors.grey)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+            ),
+            child: Text('Yes, Cancel Order'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _isCancelling = true);
+
+    try {
+      final success = await _orderService.cancelOrder(
+        widget.orderId,
+        'Cancelled by buyer',
+      );
+
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_order!.paymentMethod == 'pod'
+                ? 'Order cancelled successfully!'
+                : 'Order cancelled! Refund will be processed within 5-7 business days.'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 4),
+          ),
+        );
+        
+        // Navigate back to orders screen
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (context) => OrdersScreen(initialTab: 1)),
+          (route) => route.isFirst,
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error cancelling order: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _isCancelling = false);
+      }
+    }
+  }
+
   void _copyToClipboard(String text, String label) {
     Clipboard.setData(ClipboardData(text: text));
     ScaffoldMessenger.of(context).showSnackBar(
@@ -110,21 +206,22 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-  backgroundColor: Colors.white,
-  elevation: 0,
-  leading: IconButton(
-    icon: Icon(Icons.arrow_back, color: Colors.black),
-    onPressed: () {
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(builder: (context) => OrdersScreen()),
-        (route) => route.isFirst,
-      );
-    },
-  ),
-  title: Text('Order Details', style: AppTextStyles.heading.copyWith(fontSize: 18)),
-  centerTitle: true,
-),   body: _isLoading
+        backgroundColor: Colors.white,
+        elevation: 0,
+        leading: IconButton(
+          icon: Icon(Icons.arrow_back, color: Colors.black),
+          onPressed: () {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (context) => OrdersScreen()),
+              (route) => route.isFirst,
+            );
+          },
+        ),
+        title: Text('Order Details', style: AppTextStyles.heading.copyWith(fontSize: 18)),
+        centerTitle: true,
+      ),
+      body: _isLoading
           ? Center(child: CircularProgressIndicator(color: Color(0xFFFF6B35)))
           : _order == null
               ? _buildErrorState()
@@ -140,9 +237,22 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                     _buildDeliveryCard(),
                     SizedBox(height: 16),
                     _buildPaymentCard(),
+                    
+                    // Show auto-cancel warning if applicable
+                    if (_orderService.canCancelOrder(_order!)) ...[
+                      SizedBox(height: 16),
+                      _buildAutoCancelWarning(),
+                    ],
+                    
                     if (!_order!.isDelivered && !_order!.isCancelled) ...[
                       SizedBox(height: 16),
                       _buildDeliveryConfirmationCard(),
+                      
+                      // Cancel button - only for cancellable orders
+                      if (_orderService.canCancelOrder(_order!)) ...[
+                        SizedBox(height: 12),
+                        _buildCancelButton(),
+                      ],
                     ],
                     SizedBox(height: 32),
                   ],
@@ -150,8 +260,92 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     );
   }
 
-  // ... Rest of the widgets remain the same ...
-  
+  Widget _buildAutoCancelWarning() {
+    final timeRemaining = _orderService.getTimeUntilAutoCancel(_order!);
+    
+    if (timeRemaining == null) return SizedBox.shrink();
+
+    final daysLeft = timeRemaining.inDays;
+    final hoursLeft = timeRemaining.inHours % 24;
+
+    return Container(
+      padding: EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.orange[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orange[200]!),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.timer, color: Colors.orange[700], size: 22),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Auto-Cancel Warning',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange[900],
+                  ),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'This order will be automatically cancelled and refunded in $daysLeft day${daysLeft != 1 ? 's' : ''} ${hoursLeft}h if not delivered.',
+                  style: TextStyle(fontSize: 11, color: Colors.orange[800]),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCancelButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 52,
+      child: OutlinedButton(
+        onPressed: _isCancelling ? null : _cancelOrder,
+        style: OutlinedButton.styleFrom(
+          side: BorderSide(color: Colors.red, width: 2),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+        ),
+        child: _isCancelling
+            ? SizedBox(
+                height: 20,
+                width: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.red),
+                ),
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.cancel_outlined, color: Colors.red, size: 20),
+                  SizedBox(width: 8),
+                  Text(
+                    'Cancel Order',
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.red,
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+
+  // ... Rest of the widget methods remain the same ...
+
   Widget _buildErrorState() {
     return Center(
       child: Column(
@@ -259,35 +453,52 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     }
   }
 
-  Widget _buildOrderInfoCard() {
-    return Container(
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: Offset(0, 2),
-          ),
+ Widget _buildOrderInfoCard() {
+  return Container(
+    padding: EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.05),
+          blurRadius: 10,
+          offset: Offset(0, 2),
+        ),
+      ],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildInfoRow('Order Number', _order!.orderNumber, Icons.receipt_long, copyable: true),
+        Divider(height: 20),
+        _buildInfoRow('Order Date', _formatDate(_order!.createdAt), Icons.calendar_today),
+        Divider(height: 20),
+        _buildInfoRow('Payment Method', _getPaymentMethodText(), Icons.payment),
+        
+        // Only show payment status if NOT a cancelled POD order
+        if (!(_order!.isCancelled && _order!.isPayOnDelivery)) ...[
+          Divider(height: 20),
+          _buildInfoRow('Payment Status', _order!.paymentStatusDisplayText, Icons.account_balance_wallet,
+              color: _order!.isPaymentCompleted ? Colors.green : Colors.orange),
         ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildInfoRow('Order Number', _order!.orderNumber, Icons.receipt_long, copyable: true),
-          Divider(height: 20),
-          _buildInfoRow('Order Date', _formatDate(_order!.createdAt), Icons.calendar_today),
-          Divider(height: 20),
-          _buildInfoRow('Payment Method', _order!.paymentMethod, Icons.payment),
-          Divider(height: 20),
-          _buildInfoRow('Payment Status', _order!.paymentStatus, Icons.account_balance_wallet,
-              color: _order!.paymentStatus == 'paid' ? Colors.green : Colors.orange),
-        ],
-      ),
-    );
+      ],
+    ),
+  );
+}
+
+String _getPaymentMethodText() {
+  switch (_order!.paymentMethod) {
+    case 'full':
+      return 'Full Payment';
+    case 'half':
+      return 'Half Payment';
+    case 'pod':
+      return 'Pay on Delivery';
+    default:
+      return _order!.paymentMethod;
   }
+}
 
   Widget _buildProductCard() {
     return Container(
@@ -461,74 +672,72 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     );
   }
 
- Widget _buildDeliveryConfirmationCard() {
-  // Check if delivery code exists
-  if (_order!.deliveryCode == null || _order!.deliveryCode!.isEmpty) {
-    return SizedBox.shrink(); // Don't show if no code
-  }
+  Widget _buildDeliveryConfirmationCard() {
+    if (_order!.deliveryCode == null || _order!.deliveryCode!.isEmpty) {
+      return SizedBox.shrink();
+    }
 
-  return Container(
-    padding: EdgeInsets.all(16),
-    decoration: BoxDecoration(
-      color: Colors.green[50],
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: Colors.green[200]!),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.lock, color: Colors.green[700], size: 20),
-            SizedBox(width: 8),
-            Text(
-              'Your Delivery Code',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.bold,
-                color: Colors.green[900],
-              ),
-            ),
-          ],
-        ),
-        SizedBox(height: 4),
-        Text(
-          'Share this code ONLY when you receive your item',
-          style: TextStyle(fontSize: 12, color: Colors.green[800], fontWeight: FontWeight.w500),
-        ),
-        SizedBox(height: 16),
-        // Display the code (not input)
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Container(
-              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.green[300]!, width: 2),
-              ),
-              child: Text(
-                _order!.deliveryCode!,
+    return Container(
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.green[50],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.green[200]!),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.lock, color: Colors.green[700], size: 20),
+              SizedBox(width: 8),
+              Text(
+                'Your Delivery Code',
                 style: TextStyle(
-                  fontSize: 32,
+                  fontSize: 15,
                   fontWeight: FontWeight.bold,
                   color: Colors.green[900],
-                  fontFamily: 'monospace',
-                  letterSpacing: 8,
                 ),
               ),
-            ),
-            IconButton(
-              icon: Icon(Icons.copy, color: Colors.green[700], size: 28),
-              onPressed: () => _copyToClipboard(_order!.deliveryCode!, 'Delivery code'),
-            ),
-          ],
-        ),
-      ],
-    ),
-  );
-}
+            ],
+          ),
+          SizedBox(height: 4),
+          Text(
+            'Share this code ONLY when you receive your item',
+            style: TextStyle(fontSize: 12, color: Colors.green[800], fontWeight: FontWeight.w500),
+          ),
+          SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.green[300]!, width: 2),
+                ),
+                child: Text(
+                  _order!.deliveryCode!,
+                  style: TextStyle(
+                    fontSize: 32,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green[900],
+                    fontFamily: 'monospace',
+                    letterSpacing: 8,
+                  ),
+                ),
+              ),
+              IconButton(
+                icon: Icon(Icons.copy, color: Colors.green[700], size: 28),
+                onPressed: () => _copyToClipboard(_order!.deliveryCode!, 'Delivery code'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildInfoRow(String label, String value, IconData icon,
       {bool copyable = false, Color? color}) {

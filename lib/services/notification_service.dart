@@ -67,18 +67,19 @@ class NotificationService {
     required String title,
     required String message,
     String? orderNumber,
+    String? orderId,        // ADD THIS parameter
     double? amount,
   }) async {
     try {
       final response = await _supabase.from('notifications').insert({
         'user_id': userId,
-        'type': type.toSnakeCase(), // --- FIX: Using your toSnakeCase() ---
+        'type': type.toSnakeCase(),
         'title': title,
         'message': message,
         'order_number': orderNumber,
+        'order_id': orderId,    // ADD THIS to insert
         'amount': amount,
         'is_read': false,
-        'created_at': DateTime.now().toIso8601String(),
       }).select().single();
       
       final newNotification = NotificationModel.fromJson(response);
@@ -152,6 +153,7 @@ class NotificationService {
         title: 'Order Placed Successfully',
         message: 'Nike Air Max 270 - Order #ORD-2024-1234',
         orderNumber: 'ORD-2024-1234',
+        orderId: 'actual-order-uuid-here',  // ADD THIS with actual order ID
         timestamp: DateTime.now().subtract(Duration(minutes: 5)),
         metadata: {'itemName': 'Nike Air Max 270'},
       ),
@@ -160,6 +162,8 @@ class NotificationService {
         type: NotificationType.paymentEscrow,
         title: 'Payment Secured',
         message: '₦15,500 has been added to escrow',
+        orderNumber: 'ORD-2024-1234',       // ADD THIS
+        orderId: 'actual-order-uuid-here',  // ADD THIS with actual order ID
         amount: 15500,
         timestamp: DateTime.now().subtract(Duration(minutes: 6)),
       ),
@@ -169,6 +173,7 @@ class NotificationService {
         title: 'Order Confirmed',
         message: 'Seller confirmed your order #ORD-2024-1234',
         orderNumber: 'ORD-2024-1234',
+        orderId: 'actual-order-uuid-here',  // ADD THIS with actual order ID
         timestamp: DateTime.now().subtract(Duration(hours: 2)),
         isRead: true,
       ),

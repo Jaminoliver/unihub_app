@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'package:intl/intl.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_text_styles.dart';
 import '../models/notification_model.dart';
 import '../services/notification_service.dart';
+import '../widgets/unihub_loading_widget.dart';
+import 'order_details_screen.dart';
+import 'orders_screen.dart';
 
 class NotificationsScreen extends StatefulWidget {
   const NotificationsScreen({super.key});
@@ -19,11 +21,32 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
   
   late Future<void> _notificationsFuture;
   
+  // Add a key to force rebuild when notifications change
+  int _notificationCount = 0;
+  
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
     _notificationsFuture = _notificationService.fetchNotifications();
+    
+    // Periodically check for new notifications
+    _startNotificationPolling();
+  }
+  
+  void _startNotificationPolling() {
+    // Check for new notifications every 3 seconds
+    Future.delayed(Duration(seconds: 3), () {
+      if (mounted) {
+        final currentCount = _notificationService.allNotifications.length;
+        if (currentCount != _notificationCount) {
+          setState(() {
+            _notificationCount = currentCount;
+          });
+        }
+        _startNotificationPolling();
+      }
+    });
   }
 
   @override
@@ -48,7 +71,9 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
       case NotificationType.orderPlaced:
         return Icons.shopping_bag;
       case NotificationType.paymentEscrow:
-        return Icons.account_balance_wallet;
+        return Icons.security; // Lock icon for escrow
+      case NotificationType.escrowReleased:
+        return Icons.lock_open; // Unlocked icon for release
       case NotificationType.orderConfirmed:
         return Icons.check_circle;
       case NotificationType.orderShipped:
@@ -92,25 +117,28 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
       case NotificationType.orderPlaced:
       case NotificationType.orderConfirmed:
       case NotificationType.orderDelivered:
-        return const Color(0xFF10B981);
+        return const Color(0xFF10B981); // Green
       case NotificationType.paymentEscrow:
+        return const Color(0xFFFFA500); // Orange for secured payment
+      case NotificationType.escrowReleased:
+        return const Color(0xFF10B981); // Green for released escrow
       case NotificationType.walletCredited:
       case NotificationType.refundCompleted:
-        return const Color(0xFF3B82F6);
+        return const Color(0xFF3B82F6); // Blue
       case NotificationType.orderShipped:
       case NotificationType.orderOutForDelivery:
-        return const Color(0xFFFFA500);
+        return const Color(0xFFFFA500); // Orange
       case NotificationType.priceDropAlert:
       case NotificationType.newPromo:
       case NotificationType.wishlistSale:
-        return const Color(0xFFFF6B35);
+        return const Color(0xFFFF6B35); // Brand orange
       case NotificationType.orderCancelled:
       case NotificationType.paymentFailed:
-        return const Color(0xFFEF4444);
+        return const Color(0xFFEF4444); // Red
       case NotificationType.deliveryDelayed:
-        return const Color(0xFFF59E0B);
+        return const Color(0xFFF59E0B); // Amber
       default:
-        return const Color(0xFF6B7280);
+        return const Color(0xFF6B7280); // Gray
     }
   }
 
@@ -136,33 +164,33 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
           style: AppTextStyles.heading.copyWith(fontSize: 18, fontWeight: FontWeight.bold),
         ),
         actions: [
+          // Trash icon to clear all notifications
+          if (_notificationService.allNotifications.isNotEmpty)
+            IconButton(
+              icon: const Icon(Icons.delete_outline, color: Colors.black),
+              onPressed: () => _showClearConfirmDialog(),
+              tooltip: 'Clear all notifications',
+            ),
+          // Mark all read button
           if (_notificationService.unreadCount > 0)
             TextButton(
-              onPressed: () {
-                setState(() => _notificationService.markAllAsRead());
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('All notifications marked as read'),
-                    duration: Duration(seconds: 2),
-                  ),
-                );
+              onPressed: () async {
+                await _notificationService.markAllAsRead();
+                setState(() {});
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('All notifications marked as read'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                }
               },
               child: Text(
                 'Mark all read',
                 style: TextStyle(color: Color(0xFFFF6B35), fontSize: 13, fontWeight: FontWeight.w600),
               ),
             ),
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.more_vert, color: Colors.black),
-            onSelected: (value) {
-              if (value == 'clear') {
-                _showClearConfirmDialog();
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(value: 'clear', child: Text('Clear all')),
-            ],
-          ),
         ],
         bottom: TabBar(
           controller: _tabController,
@@ -222,7 +250,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
         future: _notificationsFuture,
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
-            return Center(child: CircularProgressIndicator());
+            return Center(child: UniHubLoader(size: 80));
           }
 
           if (snapshot.hasError) {
@@ -327,20 +355,26 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
           padding: const EdgeInsets.only(right: 20),
           child: const Icon(Icons.delete, color: Colors.white),
         ),
-        onDismissed: (_) {
-          setState(() => _notificationService.deleteNotification(notification.id));
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Notification deleted'),
-              duration: Duration(seconds: 2),
-            ),
-          );
+        onDismissed: (_) async {
+          await _notificationService.deleteNotification(notification.id);
+          setState(() {});
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Notification deleted'),
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
         },
         child: InkWell(
-          onTap: () {
+          onTap: () async {
             if (!notification.isRead) {
-              setState(() => _notificationService.markAsRead(notification.id));
+              await _notificationService.markAsRead(notification.id);
+              setState(() {});
             }
+            // Navigate based on notification type
+            _handleNotificationTap(notification);
           },
           borderRadius: BorderRadius.circular(12),
           child: Padding(
@@ -420,25 +454,66 @@ class _NotificationsScreenState extends State<NotificationsScreen> with SingleTi
     );
   }
 
+ void _handleNotificationTap(NotificationModel notification) {
+  // Navigate based on notification type
+  switch (notification.type) {
+    case NotificationType.orderPlaced:
+    case NotificationType.paymentEscrow:
+    case NotificationType.orderConfirmed:
+    case NotificationType.orderShipped:
+    case NotificationType.orderOutForDelivery:
+    case NotificationType.orderCancelled:
+    case NotificationType.refundInitiated:
+    case NotificationType.refundCompleted:
+    case NotificationType.escrowReleased:
+      // Navigate to order details if orderId exists
+      if (notification.orderId != null) {  // CHANGED: Use orderId
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => OrderDetailsScreen(orderId: notification.orderId!),  // CHANGED
+          ),
+        );
+      }
+      break;
+    
+    case NotificationType.orderDelivered:
+      // Navigate to delivered orders tab
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => OrdersScreen(initialTab: 1), // Index 1 = History tab (completed orders)
+        ),
+      );
+      break;
+    
+    default:
+      // For other notifications, don't navigate
+      break;
+  }
+}
   void _showClearConfirmDialog() {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text('Clear All Notifications?'),
-        content: const Text('This action cannot be undone.'),
+        content: const Text('This will permanently delete all your notifications. This action cannot be undone.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text('Cancel', style: TextStyle(color: AppColors.textLight)),
           ),
           ElevatedButton(
-            onPressed: () {
-              setState(() => _notificationService.clearAll());
+            onPressed: () async {
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('All notifications cleared')),
-              );
+              await _notificationService.clearAll();
+              setState(() {});
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('All notifications cleared')),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,

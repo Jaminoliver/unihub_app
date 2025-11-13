@@ -56,22 +56,26 @@ class OrderService {
       final newOrder = OrderModel.fromJson(response);
       final productName = newOrder.productName ?? 'your item';
 
+      // ✅ ADD orderId parameter
       await _notificationService.createNotification(
         userId: buyerId,
         type: NotificationType.orderPlaced,
         title: 'Order Placed Successfully',
         message: '$productName - Order #${newOrder.orderNumber}',
         orderNumber: newOrder.orderNumber,
+        orderId: newOrder.id,  // ✅ ADD THIS LINE
         amount: newOrder.totalAmount,
       );
 
       if (escrowAmount > 0) {
+        // ✅ ADD orderId parameter
         await _notificationService.createNotification(
           userId: buyerId,
           type: NotificationType.paymentEscrow,
           title: 'Payment Secured',
           message: 'Your payment of ₦${escrowAmount.toStringAsFixed(0)} for $productName is in escrow.',
           orderNumber: newOrder.orderNumber,
+          orderId: newOrder.id,  // ✅ ADD THIS LINE
           amount: escrowAmount,
         );
       }
@@ -83,6 +87,8 @@ class OrderService {
     }
   }
 
+  // ... rest of your methods remain the same ...
+  
   Future<List<OrderModel>> createMultipleOrders({
     required String buyerId,
     required List<Map<String, dynamic>> orderItems,
@@ -291,40 +297,60 @@ class OrderService {
 
   Future<bool> cancelOrder(String orderId, String? reason) async {
     try {
-      // TODO: Add logic to call a 'refund-escrow' Edge Function if order was paid
+      print('🚫 Cancelling order: $orderId');
+      print('Reason: ${reason ?? "No reason provided"}');
 
-      await _supabase
-          .from('orders')
-          .update({
-            'order_status': 'cancelled',
-            'notes': reason,
-            'updated_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', orderId);
+      // Call the refund-escrow Edge Function
+      final response = await _supabase.functions.invoke(
+        'refund-escrow',
+        body: {
+          'orderId': orderId,
+          'reason': reason ?? 'Order cancelled by buyer',
+          'isAutoRefund': false,
+        },
+      );
 
+      // Check response status
+      if (response.status != null && response.status! >= 300) {
+        String errorMessage = 'Failed to cancel order.';
+        if (response.data != null && response.data['error'] != null) {
+          errorMessage = response.data['error'] as String;
+        }
+        print('❌ Error from refund-escrow function: $errorMessage');
+        throw Exception(errorMessage);
+      }
+
+      print('✅ Order cancelled successfully: ${response.data['message']}');
       return true;
+
     } catch (e) {
-      print('Error cancelling order: $e');
-      return false;
+      print('❌ Error cancelling order: $e');
+      rethrow;
     }
   }
 
-  Future<int> getActiveOrdersCount(String buyerId) async {
-    try {
-      final response = await _supabase
-          .from('orders')
-          .select('id')
-          .eq('buyer_id', buyerId)
-          .not('order_status', 'in', '(delivered,cancelled,refunded)')
-          .count(CountOption.exact);
-
-      return response.count;
-    } catch (e) {
-      print('Error getting active orders count: $e');
-      return 0;
-    }
+  /// Check if order can be cancelled (only pending/confirmed orders)
+  bool canCancelOrder(OrderModel order) {
+    // Can only cancel if not shipped/delivered/already cancelled
+    return !['shipped', 'delivered', 'cancelled', 'refunded']
+        .contains(order.orderStatus);
   }
 
+  /// Get time remaining before auto-cancel (returns null if > 6 days or already cancelled)
+  Duration? getTimeUntilAutoCancel(OrderModel order) {
+    if (['delivered', 'cancelled', 'refunded'].contains(order.orderStatus)) {
+      return null;
+    }
+
+    final sixDaysFromCreation = order.createdAt.add(Duration(days: 6));
+    final now = DateTime.now();
+
+    if (now.isAfter(sixDaysFromCreation)) {
+      return null; // Already past deadline
+    }
+
+    return sixDaysFromCreation.difference(now);
+  }
   Future<List<OrderModel>> getOrdersByStatus(
     String userId,
     List<String> statuses, {
