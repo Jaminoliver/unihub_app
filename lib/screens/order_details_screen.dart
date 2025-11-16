@@ -5,6 +5,12 @@ import '../services/order_service.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_text_styles.dart';
 import 'orders_screen.dart';
+import '../models/review_model.dart';
+import '../services/reviews_service.dart';
+import '../services/auth_service.dart';
+import '../widgets/leave_review_dialog.dart';
+import 'package:intl/intl.dart';
+
 
 class OrderDetailsScreen extends StatefulWidget {
   final String orderId;
@@ -21,11 +27,15 @@ class OrderDetailsScreen extends StatefulWidget {
 class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   final OrderService _orderService = OrderService();
   final TextEditingController _deliveryCodeController = TextEditingController();
+  final ReviewService _reviewService = ReviewService();
+  final AuthService _authService = AuthService();
 
   OrderModel? _order;
   bool _isLoading = true;
   bool _isConfirming = false;
   bool _isCancelling = false;
+  ReviewModel? _existingReview;
+  bool _isLoadingReview = false;
 
   @override
   void initState() {
@@ -39,22 +49,81 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     super.dispose();
   }
 
-  Future<void> _loadOrder() async {
-    setState(() => _isLoading = true);
-
-    try {
-      final order = await _orderService.getOrderById(widget.orderId);
-      setState(() {
-        _order = order;
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading order: $e')),
-      );
-    }
+Future<void> _loadOrder() async {
+  setState(() => _isLoading = true);
+  try {
+    final order = await _orderService.getOrderById(widget.orderId);
+    setState(() {
+      _order = order;
+      _isLoading = false;
+    });
+    
+    // Load existing review if order is delivered
+    if (_order?.isDelivered == true) [
+      SizedBox(height: 16),
+      _buildReviewSection(),
+    ];
+  } catch (e) {
+    setState(() => _isLoading = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Error loading order: $e')),
+    );
   }
+}
+
+Future<void> _loadExistingReview() async {
+  setState(() => _isLoadingReview = true);
+  try {
+    final userId = _authService.currentUserId;
+    if (userId != null) {
+      final review = await _reviewService.getUserReviewForOrder(userId, widget.orderId);
+      if (mounted) {
+        setState(() {
+          _existingReview = review;
+          _isLoadingReview = false;
+        });
+      }
+    }
+  } catch (e) {
+    print('Error loading review: $e');
+    setState(() => _isLoadingReview = false);
+  }
+}
+
+Future<void> _showLeaveReviewDialog() async {
+  final result = await showDialog<bool>(
+    context: context,
+    builder: (context) => LeaveReviewDialog(
+      productName: _order!.productName ?? 'Product',
+      productImageUrl: _order!.productImageUrl,
+      onSubmit: (rating, comment) async {
+        final userId = _authService.currentUserId;
+        if (userId == null) throw Exception('User not logged in');
+
+        final success = await _reviewService.submitReview(
+          productId: _order!.productId,
+          userId: userId,
+          orderId: widget.orderId,
+          rating: rating,
+          comment: comment,
+        );
+
+        if (!success) throw Exception('Failed to submit review');
+      },
+    ),
+  );
+
+  if (result == true) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('Thank you for your review!'),
+        backgroundColor: Colors.green,
+        duration: Duration(seconds: 3),
+      ),
+    );
+    _loadExistingReview();
+  }
+}
 
   Future<void> _confirmDelivery() async {
     final code = _deliveryCodeController.text.trim();
@@ -242,6 +311,11 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                     if (_orderService.canCancelOrder(_order!)) ...[
                       SizedBox(height: 16),
                       _buildAutoCancelWarning(),
+                    ],
+
+                    if (_order!.isDelivered) ...[
+                      SizedBox(height: 16),
+                      _buildReviewSection(),
                     ],
                     
                     if (!_order!.isDelivered && !_order!.isCancelled) ...[
@@ -801,14 +875,195 @@ String _getPaymentMethodText() {
     );
   }
 
-  String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year}';
-  }
-
   String _formatPrice(double price) {
     return '₦${price.toStringAsFixed(0).replaceAllMapped(
       RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
       (Match m) => '${m[1]},',
     )}';
+  }
+
+
+  String _formatDate(DateTime date) {
+  final format = DateFormat('E, d MMM yyyy');
+  return format.format(date);
+}
+
+  Widget _buildReviewSection() {
+    if (_isLoadingReview) {
+      return Container(
+        padding: EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Center(
+          child: CircularProgressIndicator(color: Color(0xFFFF6B35)),
+        ),
+      );
+    }
+
+    if (_existingReview != null) {
+      // User has already reviewed - show their review
+      return Container(
+        padding: EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.green, size: 20),
+                SizedBox(width: 8),
+                Text(
+                  'Your Review',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 12),
+            Row(
+              children: List.generate(5, (index) {
+                return Icon(
+                  index < _existingReview!.ratingInt
+                      ? Icons.star
+                      : Icons.star_border,
+                  size: 20,
+                  color: Color(0xFFFF6B35),
+                );
+              }),
+            ),
+            if (_existingReview!.isVerifiedPurchase) ...[
+              SizedBox(height: 6),
+              Row(
+                children: [
+                  Icon(Icons.verified, color: Color(0xFF10B981), size: 14),
+                  SizedBox(width: 4),
+                  Text(
+                    'Verified Purchase',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF10B981),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+            SizedBox(height: 8),
+            Text(
+              _existingReview!.comment,
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.grey[700],
+                height: 1.5,
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Reviewed ${_existingReview!.timeAgo}',
+              style: TextStyle(
+                fontSize: 11,
+                color: Colors.grey[500],
+              ),
+            ),
+            SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: _showLeaveReviewDialog,
+              icon: Icon(Icons.edit, size: 18),
+              label: Text('Edit Review'),
+              style: TextButton.styleFrom(
+                foregroundColor: Color(0xFFFF6B35),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // User hasn't reviewed yet - show button
+    return Container(
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFFFF6B35).withOpacity(0.1), Color(0xFFFF8C42).withOpacity(0.1)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Color(0xFFFF6B35).withOpacity(0.3)),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            Icons.rate_review,
+            size: 40,
+            color: Color(0xFFFF6B35),
+          ),
+          SizedBox(height: 12),
+          Text(
+            'How was your experience?',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
+          SizedBox(height: 4),
+          Text(
+            'Share your thoughts about this product',
+            style: TextStyle(
+              fontSize: 13,
+              color: Colors.grey[600],
+            ),
+            textAlign: TextAlign.center,
+          ),
+          SizedBox(height: 16),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: ElevatedButton.icon(
+              onPressed: _showLeaveReviewDialog,
+              icon: Icon(Icons.star, size: 20),
+              label: Text(
+                'Leave a Review',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Color(0xFFFF6B35),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                elevation: 2,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

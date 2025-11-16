@@ -2,25 +2,15 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/profile_service.dart';
 import '../models/user_model.dart';
-import 'auth/login_screen.dart';
 import 'edit_profile_screen.dart';
 import '../widgets/unihub_loading_widget.dart';
 
-class AppTheme {
-  static const orangeStart = Color(0xFFFF6B35);
-  static const orangeEnd = Color(0xFFFF8C42);
-  static const navyBlue = Color(0xFF1E3A8A);
-  static const white = Colors.white;
-  static const ashGray = Color(0xFFF5F5F7);
-  static const textDark = Color(0xFF1F2937);
-  static const textLight = Color(0xFF6B7280);
-  
-  static final gradient = LinearGradient(
-    colors: [orangeStart, orangeEnd],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
-}
+// Simplified theme constants
+const kOrangeGradient = LinearGradient(colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)]);
+const kNavyBlue = Color(0xFF1E3A8A);
+const kTextLight = Color(0xFF6B7280);
+const kTextDark = Color(0xFF1F2937);
+const kAshGray = Color(0xFFF5F5F7);
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -29,7 +19,7 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
+class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProviderStateMixin {
   final AuthService _authService = AuthService();
   final ProfileService _profileService = ProfileService();
 
@@ -38,10 +28,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isLoading = true;
   String? _errorMessage;
 
+  late AnimationController _logoutAnimationController;
+
   @override
   void initState() {
     super.initState();
+    _logoutAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 600),
+    );
     _loadUserProfile();
+  }
+
+  @override
+  void dispose() {
+    _logoutAnimationController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadUserProfile() async {
@@ -83,11 +85,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _handleLogout() async {
     try {
+      await _showLogoutAnimation();
       await _authService.signOut();
 
       if (mounted) {
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          '/account_type',
           (route) => false,
         );
       }
@@ -95,14 +98,31 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Logout failed: ${e.toString()}'),
-            backgroundColor: Colors.red,
+            content: Row(
+              children: [
+                const Icon(Icons.error_outline, color: Colors.white),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text('Logout failed: ${e.toString()}', 
+                    style: const TextStyle(fontWeight: FontWeight.w500)),
+                ),
+              ],
+            ),
+            backgroundColor: const Color(0xFFDC2626),
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         );
       }
     }
+  }
+
+  Future<void> _showLogoutAnimation() async {
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _LogoutDialog(controller: _logoutAnimationController),
+    );
   }
 
   Future<void> _navigateToEditProfile() async {
@@ -157,10 +177,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (_currentUser == null) return _buildNotLoggedInScreen();
 
     return Scaffold(
-      backgroundColor: AppTheme.ashGray,
+      backgroundColor: kAshGray,
       body: RefreshIndicator(
         onRefresh: _loadUserProfile,
-        color: AppTheme.orangeStart,
+        color: const Color(0xFFFF6B35),
         child: CustomScrollView(
           slivers: [
             _buildAppBar(),
@@ -168,17 +188,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Column(
                 children: [
                   _buildProfileHeader(),
-                  SizedBox(height: 16),
+                  const SizedBox(height: 16),
                   _buildContactSection(),
-                  SizedBox(height: 12),
+                  const SizedBox(height: 12),
                   _buildSettingsSection(),
-                  SizedBox(height: 12),
+                  const SizedBox(height: 12),
                   _buildAccountTypeCard(),
-                  SizedBox(height: 12),
+                  const SizedBox(height: 12),
                   _buildLogoutButton(),
-                  SizedBox(height: 16),
+                  const SizedBox(height: 16),
                   _buildAppVersion(),
-                  SizedBox(height: 80),
+                  const SizedBox(height: 80),
                 ],
               ),
             ),
@@ -190,11 +210,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildLoadingScreen() {
     return Scaffold(
-      backgroundColor: AppTheme.ashGray,
+      backgroundColor: kAshGray,
       body: Center(
         child: Container(
-          padding: EdgeInsets.all(24),
-          child: UniHubLoader(size: 80),
+          padding: const EdgeInsets.all(24),
+          child: const UniHubLoader(size: 80),
         ),
       ),
     );
@@ -202,7 +222,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildErrorScreen() {
     return Scaffold(
-      backgroundColor: AppTheme.ashGray,
+      backgroundColor: kAshGray,
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
@@ -210,29 +230,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                padding: EdgeInsets.all(20),
+                padding: const EdgeInsets.all(20),
                 decoration: BoxDecoration(
                   color: Colors.red.shade50,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.error_outline, size: 64, color: Colors.red),
+                child: const Icon(Icons.error_outline, size: 64, color: Colors.red),
               ),
-              SizedBox(height: 24),
-              Text(
+              const SizedBox(height: 24),
+              const Text(
                 'Error Loading Profile',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: AppTheme.navyBlue,
+                  color: kNavyBlue,
                 ),
               ),
-              SizedBox(height: 8),
+              const SizedBox(height: 8),
               Text(
                 _errorMessage ?? 'Unknown error',
-                style: TextStyle(color: AppTheme.textLight, fontSize: 14),
+                style: const TextStyle(color: kTextLight, fontSize: 14),
                 textAlign: TextAlign.center,
               ),
-              SizedBox(height: 24),
+              const SizedBox(height: 24),
               _GradientButton(
                 text: 'Retry',
                 icon: Icons.refresh,
@@ -247,7 +267,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildNotLoggedInScreen() {
     return Scaffold(
-      backgroundColor: AppTheme.ashGray,
+      backgroundColor: kAshGray,
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
@@ -255,35 +275,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Container(
-                padding: EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: AppTheme.gradient,
+                padding: const EdgeInsets.all(20),
+                decoration: const BoxDecoration(
+                  gradient: kOrangeGradient,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(Icons.person_outline, size: 64, color: Colors.white),
+                child: const Icon(Icons.person_outline, size: 64, color: Colors.white),
               ),
-              SizedBox(height: 24),
-              Text(
+              const SizedBox(height: 24),
+              const Text(
                 'Not Logged In',
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: AppTheme.navyBlue,
+                  color: kNavyBlue,
                 ),
               ),
-              SizedBox(height: 8),
-              Text(
+              const SizedBox(height: 8),
+              const Text(
                 'Please log in to view your profile',
-                style: TextStyle(color: AppTheme.textLight, fontSize: 14),
+                style: TextStyle(color: kTextLight, fontSize: 14),
                 textAlign: TextAlign.center,
               ),
-              SizedBox(height: 24),
+              const SizedBox(height: 24),
               _GradientButton(
                 text: 'Log In',
                 icon: Icons.login,
                 onPressed: () {
-                  Navigator.of(context).pushAndRemoveUntil(
-                    MaterialPageRoute(builder: (_) => const LoginScreen()),
+                  Navigator.of(context).pushNamedAndRemoveUntil(
+                    '/account_type',
                     (route) => false,
                   );
                 },
@@ -299,14 +319,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return SliverAppBar(
       pinned: true,
       elevation: 0,
-      backgroundColor: AppTheme.white,
+      backgroundColor: Colors.white,
       expandedHeight: 0,
       toolbarHeight: 56,
       automaticallyImplyLeading: false,
-      title: Text(
+      title: const Text(
         'Profile',
         style: TextStyle(
-          color: AppTheme.navyBlue,
+          color: kNavyBlue,
           fontSize: 20,
           fontWeight: FontWeight.bold,
           letterSpacing: -0.3,
@@ -317,7 +337,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           icon: Icons.edit_outlined,
           onPressed: _navigateToEditProfile,
         ),
-        SizedBox(width: 8),
+        const SizedBox(width: 8),
       ],
     );
   }
@@ -326,31 +346,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final user = _currentUser!;
     
     return Container(
-      margin: EdgeInsets.all(12),
-      padding: EdgeInsets.all(20),
+      margin: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.white,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(20),
       ),
-      child: Column(
+      child: Row(
         children: [
-          // Avatar
           Container(
-            width: 90,
-            height: 90,
+            width: 70,
+            height: 70,
             decoration: BoxDecoration(
-              gradient: AppTheme.gradient,
-              borderRadius: BorderRadius.circular(22),
+              gradient: kOrangeGradient,
+              borderRadius: BorderRadius.circular(18),
               boxShadow: [
                 BoxShadow(
-                  color: AppTheme.orangeStart.withOpacity(0.3),
-                  blurRadius: 16,
-                  offset: Offset(0, 6),
+                  color: const Color(0xFFFF6B35).withOpacity(0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
                 ),
               ],
             ),
             child: ClipRRect(
-              borderRadius: BorderRadius.circular(22),
+              borderRadius: BorderRadius.circular(18),
               child: user.profileImageUrl != null
                   ? Image.network(
                       user.profileImageUrl!,
@@ -359,9 +378,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         return Center(
                           child: Text(
                             _getInitials(user.fullName),
-                            style: TextStyle(
+                            style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 36,
+                              fontSize: 28,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
@@ -371,65 +390,65 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   : Center(
                       child: Text(
                         _getInitials(user.fullName),
-                        style: TextStyle(
+                        style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 36,
+                          fontSize: 28,
                           fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
             ),
           ),
-          SizedBox(height: 16),
-          
-          // Name and verified
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Flexible(
-                child: Text(
-                  user.fullName,
-                  style: TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.navyBlue,
-                    letterSpacing: -0.3,
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        user.fullName,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: kNavyBlue,
+                          letterSpacing: -0.3,
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (user.isVerified) ...[
+                      const SizedBox(width: 6),
+                      const Icon(Icons.verified, color: Color(0xFF10B981), size: 18),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  user.email,
+                  style: const TextStyle(
+                    color: kTextLight,
+                    fontSize: 13,
                   ),
-                  textAlign: TextAlign.center,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              if (user.isVerified) ...[
-                SizedBox(width: 8),
-                Icon(Icons.verified, color: Color(0xFF10B981), size: 20),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Icon(Icons.location_on_outlined, color: kTextLight, size: 13),
+                    const SizedBox(width: 4),
+                    Flexible(
+                      child: Text(
+                        '${user.state ?? 'Unknown'} • ${user.universityName ?? 'Unknown University'}',
+                        style: const TextStyle(color: kTextLight, fontSize: 11),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
               ],
-            ],
-          ),
-          SizedBox(height: 6),
-          
-          // Email
-          Text(
-            user.email,
-            style: TextStyle(
-              color: AppTheme.textLight,
-              fontSize: 14,
             ),
-          ),
-          SizedBox(height: 4),
-          
-          // State and University
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.location_on_outlined, color: AppTheme.textLight, size: 14),
-              SizedBox(width: 4),
-              Flexible(
-                child: Text(
-                  '${user.state ?? 'Unknown'} • ${user.universityName ?? 'Unknown University'}',
-                  style: TextStyle(color: AppTheme.textLight, fontSize: 12),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            ],
           ),
         ],
       ),
@@ -441,10 +460,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final addressPhone = _deliveryAddress?['phone_number'];
     
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 12),
-      padding: EdgeInsets.all(16),
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.white,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
@@ -453,23 +472,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Row(
             children: [
               ShaderMask(
-                shaderCallback: (bounds) => AppTheme.gradient.createShader(bounds),
-                child: Icon(Icons.contact_phone_outlined, size: 18, color: Colors.white),
+                shaderCallback: (bounds) => kOrangeGradient.createShader(bounds),
+                child: const Icon(Icons.contact_phone_outlined, size: 18, color: Colors.white),
               ),
-              SizedBox(width: 8),
-              Text(
+              const SizedBox(width: 8),
+              const Text(
                 'Contact Information',
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.bold,
-                  color: AppTheme.navyBlue,
+                  color: kNavyBlue,
                 ),
               ),
             ],
           ),
-          SizedBox(height: 16),
-          
-          // Phone
+          const SizedBox(height: 16),
           _InfoTile(
             icon: Icons.phone_outlined,
             iconColor: Colors.green,
@@ -477,10 +494,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             title: 'Phone Number',
             subtitle: user.phoneNumber ?? 'Not provided',
           ),
-          
-          SizedBox(height: 12),
-          
-          // Delivery Address
+          const SizedBox(height: 12),
           _InfoTile(
             icon: Icons.location_on_outlined,
             iconColor: Colors.blue,
@@ -488,9 +502,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             title: 'Delivery Address',
             subtitle: _formatAddress(),
           ),
-          
           if (addressPhone != null) ...[
-            SizedBox(height: 12),
+            const SizedBox(height: 12),
             _InfoTile(
               icon: Icons.phone_in_talk_outlined,
               iconColor: Colors.orange,
@@ -506,10 +519,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildSettingsSection() {
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 12),
-      padding: EdgeInsets.all(16),
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.white,
+        color: Colors.white,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Column(
@@ -518,22 +531,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Row(
             children: [
               ShaderMask(
-                shaderCallback: (bounds) => AppTheme.gradient.createShader(bounds),
-                child: Icon(Icons.settings_outlined, size: 18, color: Colors.white),
+                shaderCallback: (bounds) => kOrangeGradient.createShader(bounds),
+                child: const Icon(Icons.settings_outlined, size: 18, color: Colors.white),
               ),
-              SizedBox(width: 8),
-              Text(
+              const SizedBox(width: 8),
+              const Text(
                 'Settings',
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.bold,
-                  color: AppTheme.navyBlue,
+                  color: kNavyBlue,
                 ),
               ),
             ],
           ),
-          SizedBox(height: 16),
-          
+          const SizedBox(height: 16),
           _SettingsTile(
             icon: Icons.notifications_outlined,
             iconColor: Colors.amber,
@@ -542,16 +554,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onTap: () {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('Coming soon!'),
+                  content: const Text('Coming soon!'),
                   behavior: SnackBarBehavior.floating,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               );
             },
           ),
-          
-          SizedBox(height: 12),
-          
+          const SizedBox(height: 12),
           _SettingsTile(
             icon: Icons.shield_outlined,
             iconColor: Colors.purple,
@@ -560,16 +570,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onTap: () {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('Coming soon!'),
+                  content: const Text('Coming soon!'),
                   behavior: SnackBarBehavior.floating,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
               );
             },
           ),
-          
-          SizedBox(height: 12),
-          
+          const SizedBox(height: 12),
           _SettingsTile(
             icon: Icons.help_outline,
             iconColor: Colors.teal,
@@ -578,7 +586,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onTap: () {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('Coming soon!'),
+                  content: const Text('Coming soon!'),
                   behavior: SnackBarBehavior.floating,
                   shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 ),
@@ -593,11 +601,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildAccountTypeCard() {
     final user = _currentUser!;
     
-    if (user.isSeller) return SizedBox.shrink();
+    if (user.isSeller) return const SizedBox.shrink();
     
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 12),
-      padding: EdgeInsets.all(16),
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [Colors.blue.shade50, Colors.blue.shade100],
@@ -609,32 +617,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Row(
         children: [
           Container(
-            padding: EdgeInsets.all(12),
-            decoration: BoxDecoration(
+            padding: const EdgeInsets.all(12),
+            decoration: const BoxDecoration(
               color: Colors.white,
               shape: BoxShape.circle,
             ),
-            child: Icon(Icons.shopping_bag, color: Colors.blue, size: 24),
+            child: const Icon(Icons.shopping_bag, color: Colors.blue, size: 24),
           ),
-          SizedBox(width: 16),
+          const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   'Buyer Account',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
-                    color: AppTheme.navyBlue,
+                    color: kNavyBlue,
                   ),
                 ),
-                SizedBox(height: 4),
+                const SizedBox(height: 4),
                 Text(
                   'Browse and buy products from sellers at ${user.universityName ?? 'your university'}',
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 12,
-                    color: AppTheme.textLight,
+                    color: kTextLight,
                   ),
                 ),
               ],
@@ -647,18 +655,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildLogoutButton() {
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 12),
+      margin: const EdgeInsets.symmetric(horizontal: 12),
       child: InkWell(
         onTap: () => _showLogoutDialog(context),
         borderRadius: BorderRadius.circular(16),
         child: Container(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            color: AppTheme.white,
+            color: Colors.white,
             borderRadius: BorderRadius.circular(16),
             border: Border.all(color: Colors.red.shade200, width: 1.5),
           ),
-          child: Row(
+          child: const Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(Icons.logout, color: Colors.red, size: 20),
@@ -679,13 +687,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildAppVersion() {
-    return Column(
+    return const Column(
       children: [
         Text(
           'UniHub v1.0.0',
           style: TextStyle(
             fontSize: 12,
-            color: AppTheme.textLight,
+            color: kTextLight,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -694,7 +702,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           'Making campus commerce easier and safer',
           style: TextStyle(
             fontSize: 11,
-            color: AppTheme.textLight,
+            color: kTextLight,
           ),
         ),
       ],
@@ -709,32 +717,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
         title: Row(
           children: [
             Container(
-              padding: EdgeInsets.all(8),
+              padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
                 color: Colors.red.shade50,
                 shape: BoxShape.circle,
               ),
-              child: Icon(Icons.logout, color: Colors.red, size: 20),
+              child: const Icon(Icons.logout, color: Colors.red, size: 20),
             ),
-            SizedBox(width: 12),
-            Text('Log Out', style: TextStyle(fontSize: 18)),
+            const SizedBox(width: 12),
+            const Text('Log Out', style: TextStyle(fontSize: 18)),
           ],
         ),
-        content: Text(
+        content: const Text(
           'Are you sure you want to log out?',
-          style: TextStyle(color: AppTheme.textLight),
+          style: TextStyle(color: kTextLight),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text('Cancel', style: TextStyle(color: AppTheme.textLight)),
+            child: const Text('Cancel', style: TextStyle(color: kTextLight)),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(context);
               _handleLogout();
             },
-            child: Text('Log Out', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+            child: const Text('Log Out', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -752,21 +760,21 @@ class _CircleButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: EdgeInsets.all(8),
+      margin: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: AppTheme.white,
+        color: Colors.white,
         shape: BoxShape.circle,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.06),
             blurRadius: 12,
-            offset: Offset(0, 2),
+            offset: const Offset(0, 2),
           ),
         ],
       ),
       child: IconButton(
         icon: ShaderMask(
-          shaderCallback: (bounds) => AppTheme.gradient.createShader(bounds),
+          shaderCallback: (bounds) => kOrangeGradient.createShader(bounds),
           child: Icon(icon, color: Colors.white, size: 20),
         ),
         onPressed: onPressed,
@@ -795,29 +803,29 @@ class _InfoTile extends StatelessWidget {
     return Row(
       children: [
         Container(
-          padding: EdgeInsets.all(10),
+          padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: iconBgColor,
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(icon, color: iconColor, size: 20),
         ),
-        SizedBox(width: 12),
+        const SizedBox(width: 12),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 title,
-                style: TextStyle(fontSize: 11, color: AppTheme.textLight),
+                style: const TextStyle(fontSize: 11, color: kTextLight),
               ),
-              SizedBox(height: 2),
+              const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: AppTheme.textDark,
+                  color: kTextDark,
                 ),
               ),
             ],
@@ -849,35 +857,35 @@ class _SettingsTile extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
       child: Container(
-        padding: EdgeInsets.all(14),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: AppTheme.ashGray,
+          color: kAshGray,
           borderRadius: BorderRadius.circular(14),
         ),
         child: Row(
           children: [
             Container(
-              padding: EdgeInsets.all(10),
+              padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
                 color: iconBgColor,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(icon, color: iconColor, size: 20),
             ),
-            SizedBox(width: 12),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
                 title,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: AppTheme.textDark,
+                  color: kTextDark,
                 ),
               ),
             ),
             ShaderMask(
-              shaderCallback: (bounds) => AppTheme.gradient.createShader(bounds),
-              child: Icon(Icons.chevron_right, color: Colors.white, size: 20),
+              shaderCallback: (bounds) => kOrangeGradient.createShader(bounds),
+              child: const Icon(Icons.chevron_right, color: Colors.white, size: 20),
             ),
           ],
         ),
@@ -902,15 +910,15 @@ class _GradientButton extends StatelessWidget {
     return Container(
       height: 52,
       decoration: BoxDecoration(
-        gradient: onPressed != null ? AppTheme.gradient : null,
-        color: onPressed == null ? AppTheme.textLight.withOpacity(0.3) : null,
+        gradient: onPressed != null ? kOrangeGradient : null,
+        color: onPressed == null ? kTextLight.withOpacity(0.3) : null,
         borderRadius: BorderRadius.circular(14),
         boxShadow: onPressed != null
             ? [
                 BoxShadow(
-                  color: AppTheme.orangeStart.withOpacity(0.3),
+                  color: const Color(0xFFFF6B35).withOpacity(0.3),
                   blurRadius: 12,
-                  offset: Offset(0, 4),
+                  offset: const Offset(0, 4),
                 ),
               ]
             : [],
@@ -927,15 +935,99 @@ class _GradientButton extends StatelessWidget {
           children: [
             if (icon != null) ...[
               Icon(icon, size: 20, color: Colors.white),
-              SizedBox(width: 8),
+              const SizedBox(width: 8),
             ],
             Text(
               text,
-              style: TextStyle(
+              style: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.bold,
                 color: Colors.white,
                 letterSpacing: 0.2,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// Logout Animation Dialog
+class _LogoutDialog extends StatefulWidget {
+  final AnimationController controller;
+
+  const _LogoutDialog({required this.controller});
+
+  @override
+  State<_LogoutDialog> createState() => _LogoutDialogState();
+}
+
+class _LogoutDialogState extends State<_LogoutDialog> {
+  @override
+  void initState() {
+    super.initState();
+    widget.controller.forward();
+    Future.delayed(const Duration(milliseconds: 1500), () {
+      if (mounted) Navigator.of(context).pop();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: Container(
+        padding: const EdgeInsets.all(32),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(24),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ScaleTransition(
+              scale: CurvedAnimation(
+                parent: widget.controller,
+                curve: Curves.elasticOut,
+              ),
+              child: Container(
+                width: 80,
+                height: 80,
+                decoration: const BoxDecoration(
+                  gradient: kOrangeGradient,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.waving_hand,
+                  color: Colors.white,
+                  size: 48,
+                ),
+              ),
+            ),
+            const SizedBox(height: 24),
+            FadeTransition(
+              opacity: widget.controller,
+              child: const Column(
+                children: [
+                  Text(
+                    'Logging Out...',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF1A1A1A),
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'See you soon!',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: kTextLight,
+                    ),
+                  ),
+                ],
               ),
             ),
           ],

@@ -74,22 +74,33 @@ class CartService {
   Future<CartModel?> addToCart({
     required String userId,
     required String productId,
+    String? selectedColor,
+    String? selectedSize,
     int quantity = 1,
   }) async {
     try {
-      // Check if item already exists in cart
-      final existing = await _supabase
+      // Check if item already exists in cart with same color/size
+      final existingItems = await _supabase
           .from('cart')
-          .select('id, quantity')
+          .select('id, quantity, selected_color, selected_size')
           .eq('user_id', userId)
-          .eq('product_id', productId)
-          .maybeSingle();
+          .eq('product_id', productId);
 
-      if (existing != null) {
+      // Find matching item with same color and size
+      Map<String, dynamic>? matchingItem;
+      for (var item in existingItems) {
+        if (item['selected_color'] == selectedColor && 
+            item['selected_size'] == selectedSize) {
+          matchingItem = item;
+          break;
+        }
+      }
+
+      if (matchingItem != null) {
         // Update existing cart item quantity
-        final newQuantity = (existing['quantity'] as int) + quantity;
+        final newQuantity = (matchingItem['quantity'] as int) + quantity;
         return await updateCartItemQuantity(
-          existing['id'] as String,
+          matchingItem['id'] as String,
           newQuantity,
         );
       }
@@ -101,6 +112,8 @@ class CartService {
             'user_id': userId,
             'product_id': productId,
             'quantity': quantity,
+            'selected_color': selectedColor,
+            'selected_size': selectedSize,
             'created_at': DateTime.now().toIso8601String(),
           })
           .select('''
@@ -247,9 +260,6 @@ class CartService {
     }
   }
 
-  // ---
-  // --- THIS IS THE NEW FUNCTION THAT WAS MISSING ---
-  // ---
   /// Get a single cart item by its ID (for real-time updates)
   Future<CartModel?> getCartItem(String cartItemId) async {
     try {
@@ -289,7 +299,6 @@ class CartService {
       rethrow;
     }
   }
-  // --- END OF NEW FUNCTION ---
 
   /// Get cart item by product ID
   Future<CartModel?> getCartItemByProduct({

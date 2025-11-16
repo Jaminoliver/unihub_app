@@ -1,13 +1,14 @@
-import 'package:flutter/material.dart'; // <-- THIS IS THE MISSING LINE
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_paystack/flutter_paystack.dart';
+import 'dart:async';
 
 // New Firebase imports
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
-import 'services/push_notification_service.dart'; // This will show an error until we create it
+import 'services/push_notification_service.dart';
 
 // Your existing screen imports
 import 'screens/splash_screen.dart';
@@ -49,9 +50,6 @@ void main() async {
 
 final supabase = Supabase.instance.client;
 
-//
-// --- THE REST OF YOUR CODE IS UNCHANGED ---
-//
 class UniHubApp extends StatelessWidget {
   const UniHubApp({super.key});
 
@@ -95,6 +93,9 @@ class _BottomNavBarState extends State<BottomNavBar> {
   final _homeScrollController = ScrollController();
   late List<GlobalKey<NavigatorState>> _navigatorKeys;
   final _clearCartNotifier = ValueNotifier<bool>(false);
+  
+  // Add auth subscription
+  StreamSubscription<AuthState>? _authSubscription;
 
   int _cartRefreshKey = 0;
   int _ordersRefreshKey = 0;
@@ -107,6 +108,7 @@ class _BottomNavBarState extends State<BottomNavBar> {
     _selectedIndex = widget.initialIndex;
     _navigatorKeys = List.generate(5, (_) => GlobalKey<NavigatorState>());
     _checkAuth();
+    _setupAuthListener(); // Add this
   }
 
   Future<void> _checkAuth() async {
@@ -114,6 +116,20 @@ class _BottomNavBarState extends State<BottomNavBar> {
     if (session == null && mounted) {
       Navigator.of(context).pushReplacementNamed('/account_type');
     }
+  }
+
+  // Add this method to listen for auth changes
+  void _setupAuthListener() {
+    _authSubscription = supabase.auth.onAuthStateChange.listen((data) {
+      final session = data.session;
+      if (session == null && mounted) {
+        // User logged out, navigate to account type selection
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          '/account_type',
+          (route) => false, // Remove all previous routes
+        );
+      }
+    });
   }
 
   void _onItemTapped(int index) {
@@ -243,6 +259,7 @@ class _BottomNavBarState extends State<BottomNavBar> {
 
   @override
   void dispose() {
+    _authSubscription?.cancel(); // Cancel the subscription
     _homeScrollController.dispose();
     _clearCartNotifier.dispose();
     super.dispose();

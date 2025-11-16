@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart'; // <-- Fixed the 'packagepackage' typo here
+import 'package:flutter/material.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_text_styles.dart';
@@ -8,6 +8,8 @@ import '../services/product_service.dart';
 import '../services/reviews_service.dart';
 import '../services/cart_service.dart';
 import '../services/auth_service.dart';
+import '../services/product_view_service.dart';
+import '../services/wishlist_service.dart';
 import '../widgets/related_product_card.dart';
 import 'dart:async';
 import 'dart:convert';
@@ -28,6 +30,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   final _reviewService = ReviewService();
   final _cartService = CartService();
   final _authService = AuthService();
+  final _viewService = ProductViewService();
+  final _wishlistService = WishlistService();
 
   ProductModel? _product;
   List<ReviewModel> _reviews = [];
@@ -38,17 +42,15 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   bool _isAddingToCart = false;
   bool _showSuccessMessage = false;
   Timer? _countdownTimer;
+  Timer? _viewUpdateTimer;
   Duration? _flashSaleTimeLeft;
   bool _isDetailsExpanded = false;
   bool _isReviewsExpanded = false;
-
-  final List<Map<String, dynamic>> _dummyReviews = [
-    {'userName': 'Chioma Adebayo', 'rating': 5, 'comment': 'Amazing product! Exactly as described. The seller was very responsive and delivery was fast.', 'timeAgo': '2 days ago'},
-    {'userName': 'Ibrahim Musa', 'rating': 4, 'comment': 'Good quality but took a while to arrive. Overall satisfied with the purchase.', 'timeAgo': '1 week ago'},
-    {'userName': 'Ngozi Okafor', 'rating': 5, 'comment': 'Perfect condition! Better than I expected. Highly recommend this seller.', 'timeAgo': '2 weeks ago'},
-    {'userName': 'Tunde Williams', 'rating': 4, 'comment': 'Very nice product. Worth the price. Would buy from this- seller again.', 'timeAgo': '3 weeks ago'},
-    {'userName': 'Aisha Bello', 'rating': 5, 'comment': 'Excellent quality and great communication with the seller. Fast delivery too!', 'timeAgo': '1 month ago'},
-  ];
+  int _totalViews = 0;
+  
+  // Color and Size Selection
+  String? _selectedColor;
+  String? _selectedSize;
 
   @override
   void initState() {
@@ -59,6 +61,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   @override
   void dispose() {
     _countdownTimer?.cancel();
+    _viewUpdateTimer?.cancel();
     super.dispose();
   }
 
@@ -68,6 +71,18 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       if (_product == null) throw Exception('Product not found');
       
       _productService.incrementViewCount(_product!.id);
+      await _viewService.trackProductView(_product!.id);
+      _startViewTracking();
+      
+      final userId = _authService.currentUserId;
+      if (userId != null) {
+        final isInWishlist = await _wishlistService.isInWishlist(
+          userId: userId,
+          productId: _product!.id,
+        );
+        if (mounted) setState(() => _isFavorite = isInWishlist);
+      }
+      
       if (_product!.isFlashSale && _product!.flashSaleEndsAt != null) {
         _startCountdown(_product!.flashSaleEndsAt!);
       }
@@ -79,6 +94,20 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       setState(() => _isLoading = false);
       if (mounted) Navigator.pop(context);
     }
+  }
+
+  void _startViewTracking() {
+    _updateViewerCount();
+    _viewUpdateTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      if (!mounted) return timer.cancel();
+      _viewService.updateViewTimestamp(_product!.id);
+      _updateViewerCount();
+    });
+  }
+
+  Future<void> _updateViewerCount() async {
+    final count = await _viewService.getTotalViews(_product!.id);
+    if (mounted) setState(() => _totalViews = count);
   }
 
   Future<void> _loadReviews() async {
@@ -103,13 +132,44 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     });
   }
 
+  Future<void> _toggleFavorite() async {
+    final userId = _authService.currentUserId;
+    if (userId == null) return;
+
+    if (_isFavorite) {
+      setState(() => _isFavorite = false);
+      await _wishlistService.removeFromWishlist(userId: userId, productId: _product!.id);
+    } else {
+      setState(() => _isFavorite = true);
+      await _wishlistService.addToWishlist(userId: userId, productId: _product!.id);
+    }
+  }
+
   Future<void> _addToCart() async {
     if (_isAddingToCart) return;
+    
+    // Validate selections if product has colors/sizes
+    if (_product!.colors != null && _product!.colors!.isNotEmpty && _selectedColor == null) {
+      _showSnackBar('Please select a color', isError: true);
+      return;
+    }
+    if (_product!.sizes != null && _product!.sizes!.isNotEmpty && _selectedSize == null) {
+      _showSnackBar('Please select a size', isError: true);
+      return;
+    }
+    
     setState(() => _isAddingToCart = true);
     try {
       final userId = _authService.currentUserId;
       if (userId == null) throw Exception('Login required');
-      await _cartService.addToCart(userId: userId, productId: _product!.id);
+      
+      await _cartService.addToCart(
+        userId: userId,
+        productId: _product!.id,
+        selectedColor: _selectedColor,
+        selectedSize: _selectedSize,
+      );
+      
       await _loadCartCount();
       
       setState(() {
@@ -122,15 +182,19 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       });
     } catch (e) {
       setState(() => _isAddingToCart = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed: ${e.toString()}'),
-          backgroundColor: Color(0xFFEF4444),
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
-      );
+      _showSnackBar('Failed: ${e.toString()}', isError: true);
     }
+  }
+
+  void _showSnackBar(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: isError ? Color(0xFFEF4444) : Color(0xFF10B981),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
   }
 
   List<String> _getImageUrls() {
@@ -188,18 +252,18 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                     SizedBox(height: 8),
                     _buildPromoBanners(),
                     SizedBox(height: 16),
-                    Container(margin: EdgeInsets.symmetric(horizontal: 16), height: 1, color: Colors.black),
+                    _buildDivider(),
                     SizedBox(height: 16),
                     _buildDetailsCard(),
                     SizedBox(height: 16),
-                    Container(margin: EdgeInsets.symmetric(horizontal: 16), height: 1, color: Colors.black),
+                    _buildDivider(),
                     SizedBox(height: 16),
                     _buildReviewsCard(),
                     SizedBox(height: 16),
-                    Container(margin: EdgeInsets.symmetric(horizontal: 16), height: 1, color: Colors.black),
+                    _buildDivider(),
                     SizedBox(height: 16),
                     _buildRelatedProducts(),
-                    SizedBox(height: 90), // Space for the bottom bar
+                    SizedBox(height: 90),
                   ],
                 ),
               ),
@@ -215,85 +279,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   Widget _buildLoadingScreen() {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SingleChildScrollView(
-        child: Column(
-          children: [
-            SizedBox(height: 60),
-            _buildShimmer(
-              child: Container(
-                height: 300,
-                margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(16)),
-              ),
-            ),
-            SizedBox(height: 8),
-            _buildShimmer(
-              child: Container(
-                margin: EdgeInsets.symmetric(horizontal: 16),
-                padding: EdgeInsets.all(14),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(height: 18, width: double.infinity, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(4))),
-                    SizedBox(height: 10),
-                    Container(height: 24, width: 120, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(4))),
-                    SizedBox(height: 10),
-                    Container(height: 14, width: 80, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(4))),
-                  ],
-                ),
-              ),
-            ),
-            SizedBox(height: 8),
-            _buildShimmer(
-              child: Container(
-                margin: EdgeInsets.symmetric(horizontal: 16),
-                padding: EdgeInsets.all(14),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
-                child: Row(
-                  children: [
-                    Container(width: 20, height: 20, decoration: BoxDecoration(color: Colors.grey.shade300, shape: BoxShape.circle)),
-                    SizedBox(width: 8),
-                    Expanded(child: Container(height: 14, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(4)))),
-                  ],
-                ),
-              ),
-            ),
-            SizedBox(height: 16),
-            _buildShimmer(
-              child: Container(
-                margin: EdgeInsets.symmetric(horizontal: 16),
-                padding: EdgeInsets.all(14),
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
-                child: Column(
-                  children: [
-                    Container(height: 16, width: double.infinity, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(4))),
-                    SizedBox(height: 8),
-                    Container(height: 14, width: double.infinity, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(4))),
-                    SizedBox(height: 8),
-                    Container(height: 14, width: 180, decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(4))),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildShimmer({required Widget child}) {
-    // This is the shimmer from your original code, it was not the
-    // _ShimmerWidget at the bottom of the file, so I am using this one.
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.3, end: 1.0),
-      duration: Duration(milliseconds: 800),
-      curve: Curves.easeInOut,
-      builder: (context, value, child) => Opacity(opacity: value, child: child),
-      onEnd: () {
-        if (mounted) setState(() {});
-      },
-      child: child,
+      body: Center(child: CircularProgressIndicator(color: Color(0xFFFF6B35))),
     );
   }
 
@@ -351,82 +337,51 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(16),
-        child: GestureDetector(
-          onHorizontalDragEnd: (details) {
-            if (details.primaryVelocity! > 200) {
-              carouselController.previousPage(duration: Duration(milliseconds: 300), curve: Curves.easeInOut);
-            } else if (details.primaryVelocity! < -200) {
-              carouselController.nextPage(duration: Duration(milliseconds: 300), curve: Curves.easeInOut);
-            }
-          },
-          child: Stack(
-            children: [
-              CarouselSlider(
-                carouselController: carouselController,
-                options: CarouselOptions(
-                  height: 300,
-                  viewportFraction: 1.0,
-                  enableInfiniteScroll: images.length > 1,
-                  onPageChanged: (i, _) => setState(() => _currentImageIndex = i),
-                  scrollPhysics: BouncingScrollPhysics(),
-                  pageSnapping: true,
-                ),
-               items: images.map((url) => url == 'placeholder'
-                  ? Center(child: Icon(Icons.shopping_bag_outlined, size: 60, color: AppColors.textLight.withOpacity(0.3)))
-                  : Image.network(
-                      url,
-                      fit: BoxFit.contain,
-                      width: double.infinity,
-                      errorBuilder: (_, __, ___) => Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.image_not_supported_outlined, size: 50, color: AppColors.textLight.withOpacity(0.5)),
-                            SizedBox(height: 8),
-                            Text('Image unavailable', style: TextStyle(color: AppColors.textLight, fontSize: 12)),
-                          ],
-                        ),
-                      ),
-                      loadingBuilder: (_, child, progress) {
-                        if (progress == null) return child;
-                        return Center(child: CircularProgressIndicator(color: Color(0xFFFF6B35), strokeWidth: 2));
-                      },
-                    )).toList(),
+        child: Stack(
+          children: [
+            CarouselSlider(
+              carouselController: carouselController,
+              options: CarouselOptions(
+                height: 300,
+                viewportFraction: 1.0,
+                enableInfiniteScroll: images.length > 1,
+                onPageChanged: (i, _) => setState(() => _currentImageIndex = i),
+                scrollPhysics: BouncingScrollPhysics(),
               ),
-              if (_product!.discountPercentage != null && _product!.discountPercentage! > 0)
+              items: images.map((url) => url == 'placeholder'
+                ? Center(child: Icon(Icons.shopping_bag_outlined, size: 60, color: AppColors.textLight.withOpacity(0.3)))
+                : Image.network(url, fit: BoxFit.contain, width: double.infinity,
+                    errorBuilder: (_, __, ___) => Center(child: Icon(Icons.image_not_supported_outlined, size: 50, color: AppColors.textLight.withOpacity(0.5))),
+                    loadingBuilder: (_, child, progress) => progress == null ? child : Center(child: CircularProgressIndicator(color: Color(0xFFFF6B35), strokeWidth: 2)),
+                  )).toList(),
+            ),
+            if (_product!.discountPercentage != null && _product!.discountPercentage! > 0)
               Positioned(
-                top: 12,
-                right: 12,
+                top: 12, right: 12,
                 child: Container(
                   padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(color: Color(0xFFFF6B35), borderRadius: BorderRadius.circular(12)),
                   child: Text('-${_product!.discountPercentage!}%', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
                 ),
               ),
-              if (images.length > 1)
+            if (images.length > 1)
               Positioned(
-                bottom: 16,
-                left: 0,
-                right: 0,
+                bottom: 16, left: 0, right: 0,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(
-                    images.length,
-                    (i) => AnimatedContainer(
-                      duration: Duration(milliseconds: 300),
-                      margin: EdgeInsets.symmetric(horizontal: 3),
-                      width: _currentImageIndex == i ? 24 : 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: _currentImageIndex == i ? Color(0xFFFF6B35) : Colors.grey.shade300,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
+                  children: List.generate(images.length, (i) => AnimatedContainer(
+                    duration: Duration(milliseconds: 300),
+                    margin: EdgeInsets.symmetric(horizontal: 3),
+                    width: _currentImageIndex == i ? 24 : 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: _currentImageIndex == i ? Color(0xFFFF6B35) : Colors.grey.shade300,
+                      borderRadius: BorderRadius.circular(4),
                     ),
-                  ),
+                  )),
                 ),
               ),
-            ],
-          ),
+          ],
         ),
       ),
     );
@@ -457,10 +412,8 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
           Container(
             padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
             decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
-            child: Text(
-              '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFFFF6B35)),
-            ),
+            child: Text('${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFFFF6B35))),
           ),
         ],
       ),
@@ -479,13 +432,10 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             children: [
               Expanded(child: Text(_product!.name, style: AppTextStyles.heading.copyWith(fontSize: 16, color: Colors.black))),
               GestureDetector(
-                onTap: () => setState(() => _isFavorite = !_isFavorite),
+                onTap: _toggleFavorite,
                 child: Container(
                   padding: EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: _isFavorite ? Color(0xFFFF6B35) : AppColors.background,
-                    shape: BoxShape.circle,
-                  ),
+                  decoration: BoxDecoration(color: _isFavorite ? Color(0xFFFF6B35) : AppColors.background, shape: BoxShape.circle),
                   child: Icon(_isFavorite ? Icons.favorite : Icons.favorite_border, color: _isFavorite ? Colors.white : Color(0xFFFF6B35), size: 18),
                 ),
               ),
@@ -517,10 +467,19 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                   ],
                 ),
               ),
-              Spacer(),
-              Icon(Icons.visibility_outlined, size: 13, color: Color(0xFFFF6B35)),
-              SizedBox(width: 4),
-              Text('${_product!.viewCount}', style: TextStyle(fontSize: 11, color: Colors.black87)),
+              SizedBox(width: 10),
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(color: Color(0xFFFF6B35).withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.visibility, size: 13, color: Color(0xFFFF6B35)),
+                    SizedBox(width: 4),
+                    Text('$_totalViews ${_totalViews == 1 ? 'view' : 'views'}', style: TextStyle(fontSize: 11, color: Color(0xFFFF6B35), fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
             ],
           ),
           if (_product!.stockQuantity <= 10) ...[
@@ -550,13 +509,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
         children: [
           Icon(Icons.location_on, color: Color(0xFFFF6B35), size: 20),
           SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              _product!.universityAbbr ?? _product!.universityName ?? 'Unknown',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black),
-            ),
-          ),
-          Icon(Icons.verified, color: Color(0xFF10B981), size: 16),
+          Expanded(child: Text(_product!.universityAbbr ?? _product!.universityName ?? 'Unknown', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black))),
         ],
       ),
     );
@@ -573,21 +526,21 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: promos.map((promo) {
-          return Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(promo['icon'] as IconData, color: Color(0xFFFF6B35), size: 28),
-              SizedBox(height: 6),
-              Text(promo['title'] as String, style: TextStyle(color: Colors.black, fontWeight: FontWeight.w600, fontSize: 10), textAlign: TextAlign.center),
-              SizedBox(height: 2),
-              Text(promo['subtitle'] as String, style: TextStyle(color: Colors.black54, fontSize: 9), textAlign: TextAlign.center),
-            ],
-          );
-        }).toList(),
+        children: promos.map((promo) => Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(promo['icon'] as IconData, color: Color(0xFFFF6B35), size: 28),
+            SizedBox(height: 6),
+            Text(promo['title'] as String, style: TextStyle(color: Colors.black, fontWeight: FontWeight.w600, fontSize: 10), textAlign: TextAlign.center),
+            SizedBox(height: 2),
+            Text(promo['subtitle'] as String, style: TextStyle(color: Colors.black54, fontSize: 9), textAlign: TextAlign.center),
+          ],
+        )).toList(),
       ),
     );
   }
+
+  Widget _buildDivider() => Container(margin: EdgeInsets.symmetric(horizontal: 16), height: 1, color: Colors.grey.shade300);
 
   Widget _buildDetailsCard() {
     return Padding(
@@ -608,6 +561,59 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
           SizedBox(height: 10),
           _buildDetailRow('Condition', _product!.condition.toUpperCase()),
           if (_product!.brand != null) _buildDetailRow('Brand', _product!.brand!),
+          
+          // Color Selection
+          if (_product!.colors != null && _product!.colors!.isNotEmpty) ...[
+            SizedBox(height: 12),
+            Text('Color', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black)),
+            SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _product!.colors!.map((color) {
+                final isSelected = _selectedColor == color;
+                return GestureDetector(
+                  onTap: () => setState(() => _selectedColor = color),
+                  child: Container(
+                    padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: isSelected ? Color(0xFFFF6B35) : Colors.white,
+                      border: Border.all(color: isSelected ? Color(0xFFFF6B35) : Colors.grey.shade300, width: 1.5),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(color, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isSelected ? Colors.white : Colors.black87)),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+          
+          // Size Selection
+          if (_product!.sizes != null && _product!.sizes!.isNotEmpty) ...[
+            SizedBox(height: 12),
+            Text('Size', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black)),
+            SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _product!.sizes!.map((size) {
+                final isSelected = _selectedSize == size;
+                return GestureDetector(
+                  onTap: () => setState(() => _selectedSize = size),
+                  child: Container(
+                    padding: EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: isSelected ? Color(0xFFFF6B35) : Colors.white,
+                      border: Border.all(color: isSelected ? Color(0xFFFF6B35) : Colors.grey.shade300, width: 1.5),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(size, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isSelected ? Colors.white : Colors.black87)),
+                  ),
+                );
+              }).toList(),
+            ),
+          ],
+          
           if (_isDetailsExpanded) ...[
             if (_product!.color != null) _buildDetailRow('Color', _product!.color!),
             _buildDetailRow('Category', _product!.categoryName ?? 'N/A'),
@@ -634,8 +640,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   }
 
   Widget _buildReviewsCard() {
-    final displayReviews = _dummyReviews;
-    final averageRating = displayReviews.fold(0, (sum, r) => sum + (r['rating'] as int)) / displayReviews.length;
+    final avgRating = _reviews.isEmpty ? 0.0 : _reviews.fold<double>(0, (sum, r) => sum + r.rating) / _reviews.length;
     
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 16),
@@ -650,30 +655,23 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                 SizedBox(width: 8),
                 Icon(Icons.star, color: Color(0xFFFF6B35), size: 16),
                 SizedBox(width: 4),
-                Text('${averageRating.toStringAsFixed(1)}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFFFF6B35))),
+                Text('${avgRating.toStringAsFixed(1)}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFFFF6B35))),
                 SizedBox(width: 4),
-                Text('(${displayReviews.length})', style: TextStyle(fontSize: 13, color: Colors.black54)),
+                Text('(${_reviews.length})', style: TextStyle(fontSize: 13, color: Colors.black54)),
                 Spacer(),
                 Icon(_isReviewsExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, color: Colors.black54, size: 24),
               ],
             ),
           ),
           SizedBox(height: 12),
-          if (displayReviews.isEmpty)
-            Center(
-              child: Padding(
-                padding: EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    Icon(Icons.rate_review_outlined, size: 35, color: AppColors.textLight.withOpacity(0.5)),
-                    SizedBox(height: 8),
-                    Text('No reviews yet', style: TextStyle(color: AppColors.textLight, fontSize: 11)),
-                  ],
-                ),
-              ),
-            )
+          if (_reviews.isEmpty)
+            Center(child: Padding(padding: EdgeInsets.all(16), child: Column(children: [
+              Icon(Icons.rate_review_outlined, size: 35, color: AppColors.textLight.withOpacity(0.5)),
+              SizedBox(height: 8),
+              Text('No reviews yet', style: TextStyle(color: AppColors.textLight, fontSize: 11)),
+            ])))
           else
-            ...(_isReviewsExpanded ? displayReviews : displayReviews.take(2)).map((r) => Container(
+            ...(_isReviewsExpanded ? _reviews : _reviews.take(2)).map((r) => Container(
               margin: EdgeInsets.only(bottom: 12),
               padding: EdgeInsets.all(12),
               decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(12)),
@@ -685,19 +683,20 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                       CircleAvatar(
                         radius: 16,
                         backgroundColor: Color(0xFFFF6B35).withOpacity(0.1),
-                        child: Text((r['userName'] as String)[0].toUpperCase(), style: TextStyle(color: Color(0xFFFF6B35), fontWeight: FontWeight.bold, fontSize: 12)),
+                        child: Text((r.userName?.isNotEmpty == true) ? r.userName![0].toUpperCase() : 'A',
+                          style: TextStyle(color: Color(0xFFFF6B35), fontWeight: FontWeight.bold, fontSize: 12)),
                       ),
                       SizedBox(width: 10),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(r['userName'] as String, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.black)),
+                            Text(r.userName ?? 'Anonymous', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.black)),
                             Row(
                               children: [
-                                ...List.generate(5, (i) => Icon(i < (r['rating'] as int) ? Icons.star : Icons.star_border, color: Color(0xFFFF6B35), size: 12)),
+                                ...List.generate(5, (i) => Icon(i < r.ratingInt ? Icons.star : Icons.star_border, color: Color(0xFFFF6B35), size: 12)),
                                 SizedBox(width: 6),
-                                Text(r['timeAgo'] as String, style: TextStyle(fontSize: 9, color: Colors.black54)),
+                                Text(r.timeAgo, style: TextStyle(fontSize: 9, color: Colors.black54)),
                               ],
                             ),
                           ],
@@ -706,7 +705,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                     ],
                   ),
                   SizedBox(height: 8),
-                  Text(r['comment'] as String, style: TextStyle(fontSize: 11, height: 1.4, color: Colors.black87)),
+                  Text(r.comment, style: TextStyle(fontSize: 11, height: 1.4, color: Colors.black87)),
                 ],
               ),
             )),
@@ -772,15 +771,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
         child: Row(
           children: [
             GestureDetector(
-              // --- THIS IS THE FIX ---
-              // We explicitly find the ROOT navigator (rootNavigator: true)
-              // and tell it to push the '/cart' route, clearing everything
-              // before it ((route) => false).
-              // This correctly replaces the entire screen with the BottomNavBar
-              // set to the cart index, just as you defined in main.dart.
-              onTap: () => Navigator.of(context, rootNavigator: true)
-                  .pushNamedAndRemoveUntil('/cart', (route) => false),
-              // --- END OF FIX ---
+              onTap: () => Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil('/cart', (route) => false),
               child: Container(
                 width: 54,
                 height: 54,
@@ -799,11 +790,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                         top: 8,
                         child: Container(
                           padding: EdgeInsets.all(4),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 4)],
-                          ),
+                          decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 4)]),
                           constraints: BoxConstraints(minWidth: 18, minHeight: 18),
                           child: Text('$_cartItemCount', style: TextStyle(color: Color(0xFFFF6B35), fontSize: 9, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
                         ),
@@ -880,54 +867,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
           ),
         ),
       ),
-    );
-  }
-}
-
-// This _ShimmerWidget was defined at the end of your file.
-// The code above uses a different shimmer implementation `_buildShimmer`,
-// which was already part of your original file.
-// I am keeping this here to be faithful to the original file structure.
-class _ShimmerWidget extends StatefulWidget {
-  final Widget child;
-  const _ShimmerWidget({required this.child});
-
-  @override
-  State<_ShimmerWidget> createState() => _ShimmerWidgetState();
-}
-
-class _ShimmerWidgetState extends State<_ShimmerWidget> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1500))..repeat();
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return ShaderMask(
-          shaderCallback: (bounds) {
-            return LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: const [Color(0xFFE0E0E0), Color(0xFFF5F5F5), Color(0xFFE0E0E0)],
-              stops: [_controller.value - 0.3, _controller.value, _controller.value + 0.3],
-            ).createShader(bounds);
-          },
-          child: widget.child,
-        );
-      },
     );
   }
 }

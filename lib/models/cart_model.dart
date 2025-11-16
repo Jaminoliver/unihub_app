@@ -8,6 +8,8 @@ class CartModel {
   final int quantity;
   final DateTime createdAt;
   final DateTime? updatedAt;
+  final String? selectedColor;
+  final String? selectedSize;
 
   // Joined product data
   final ProductModel? product;
@@ -20,6 +22,8 @@ class CartModel {
     required this.createdAt,
     this.updatedAt,
     this.product,
+    this.selectedColor,
+    this.selectedSize,
   });
 
   factory CartModel.fromJson(Map<String, dynamic> json) {
@@ -30,6 +34,8 @@ class CartModel {
       userId: json['user_id'] as String,
       productId: json['product_id'] as String,
       quantity: json['quantity'] as int? ?? 1,
+      selectedColor: json['selected_color'] as String?,   // ← ADD THIS
+      selectedSize: json['selected_size'] as String?,
       createdAt: DateTime.parse(json['created_at'] as String),
       updatedAt: json['updated_at'] != null
           ? DateTime.parse(json['updated_at'] as String)
@@ -80,6 +86,8 @@ class CartModel {
     DateTime? createdAt,
     DateTime? updatedAt,
     ProductModel? product,
+    String? selectedColor,
+    String? selectedSize,
   }) {
     return CartModel(
       id: id ?? this.id,
@@ -89,6 +97,8 @@ class CartModel {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       product: product ?? this.product,
+      selectedColor: selectedColor ?? this.selectedColor,
+      selectedSize: selectedSize ?? this.selectedSize,
     );
   }
 }

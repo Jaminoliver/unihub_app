@@ -53,34 +53,34 @@ class CartScreenState extends State<CartScreen> {
   }
 
   void _setupCartListener() {
-    final userId = _authService.currentUserId;
-    if (userId == null) return;
+  final userId = _authService.currentUserId;
+  if (userId == null) return;
 
-    _cartChannel = _supabase
-        .channel('cart:$userId')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: 'cart_items',
-          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'user_id', value: userId),
-          callback: (payload) => _handleCartInsert(payload.newRecord),
-        )
-        .onPostgresChanges(
-          event: PostgresChangeEvent.update,
-          schema: 'public',
-          table: 'cart_items',
-          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'user_id', value: userId),
-          callback: (payload) => _handleCartUpdate(payload.newRecord),
-        )
-        .onPostgresChanges(
-          event: PostgresChangeEvent.delete,
-          schema: 'public',
-          table: 'cart_items',
-          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'user_id', value: userId),
-          callback: (payload) => _handleCartDelete(payload.oldRecord),
-        )
-        .subscribe();
-  }
+  _cartChannel = _supabase
+      .channel('cart:$userId')
+      .onPostgresChanges(
+        event: PostgresChangeEvent.insert,
+        schema: 'public',
+        table: 'cart',  // ← CHANGE FROM 'cart_items' TO 'cart'
+        filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'user_id', value: userId),
+        callback: (payload) => _handleCartInsert(payload.newRecord),
+      )
+      .onPostgresChanges(
+        event: PostgresChangeEvent.update,
+        schema: 'public',
+        table: 'cart',  // ← CHANGE FROM 'cart_items' TO 'cart'
+        filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'user_id', value: userId),
+        callback: (payload) => _handleCartUpdate(payload.newRecord),
+      )
+      .onPostgresChanges(
+        event: PostgresChangeEvent.delete,
+        schema: 'public',
+        table: 'cart',  // ← CHANGE FROM 'cart_items' TO 'cart'
+        filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'user_id', value: userId),
+        callback: (payload) => _handleCartDelete(payload.oldRecord),
+      )
+      .subscribe();
+}
 
   Future<void> _handleCartInsert(Map<String, dynamic> newRecord) async {
     final cartItemId = newRecord['id'] as String;
