@@ -36,14 +36,16 @@ class WishlistService {
     }
   }
 
-  Future<void> addToWishlist({required String userId, required String productId}) async {
+  Future<bool> addToWishlist({required String userId, required String productId}) async {
     try {
       await _supabase.from('wishlist').insert({
         'user_id': userId,
         'product_id': productId,
       });
+      return true;
     } catch (e) {
-      throw Exception('Failed to add to wishlist: $e');
+      print('Failed to add to wishlist: $e');
+      return false;
     }
   }
 
@@ -71,6 +73,22 @@ class WishlistService {
       return response != null;
     } catch (e) {
       return false;
+    }
+  }
+
+  Future<int> getWishlistCount() async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) return 0;
+
+      final response = await _supabase
+          .from('wishlist')
+          .select('id')
+          .eq('user_id', userId);
+
+      return (response as List).length;
+    } catch (e) {
+      return 0;
     }
   }
 

@@ -113,23 +113,40 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
       setState(() => _currentStep = 'Creating orders...');
       final createdOrders = <OrderModel>[];
 
-      for (final item in widget.selectedItems) {
-        final product = item.product!;
-        final paymentMethod = widget.paymentMethods[item.id] ?? 'full';
+     for (final item in widget.selectedItems) {
+  final product = item.product!;
+  final paymentMethod = widget.paymentMethods[item.id] ?? 'full';
 
-        final order = await _orderService.createOrder(
-          buyerId: user.id,
-          sellerId: product.sellerId,
-          quantity: item.quantity,
-          unitPrice: product.price,
-          totalAmount: item.totalPrice,
-          paymentMethod: paymentMethod,
-          deliveryAddressId: widget.deliveryAddress.id,
-          paymentReference: paymentReference,
-          transactionId: transactionId, productId: product.id,
-        );
-        createdOrders.add(order);
-      }
+  // ADD DEBUGGING
+  print('🛒 CART ITEM DEBUG:');
+  print('Product: ${product.name}');
+  print('Cart Item Color: ${item.selectedColor}');
+  print('Cart Item Size: ${item.selectedSize}');
+  print('---');
+
+  final order = await _orderService.createOrder(
+    buyerId: user.id,
+    sellerId: product.sellerId,
+    productId: product.id,
+    quantity: item.quantity,
+    unitPrice: product.price,
+    totalAmount: item.totalPrice,
+    paymentMethod: paymentMethod,
+    deliveryAddressId: widget.deliveryAddress.id,
+    paymentReference: paymentReference,
+    transactionId: transactionId,
+    selectedColor: item.selectedColor,
+    selectedSize: item.selectedSize,
+  );
+  
+  print('✅ ORDER CREATED:');
+  print('Order Number: ${order.orderNumber}');
+  print('Order Color: ${order.selectedColor}');
+  print('Order Size: ${order.selectedSize}');
+  print('---');
+  
+  createdOrders.add(order);
+}
 
       setState(() => _currentStep = 'Finalizing...');
       for (final item in widget.selectedItems) {

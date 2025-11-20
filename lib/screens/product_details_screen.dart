@@ -420,7 +420,14 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     );
   }
 
-  Widget _buildProductInfo() {
+ Widget _buildProductInfo() {
+    // --- DEFINE THE VARIABLE HERE ---
+    // This calculates the average rating from the fetched reviews list.
+    final avgRating = _reviews.isEmpty
+        ? 0.0
+        : _reviews.fold<double>(0, (sum, r) => sum + r.rating) / _reviews.length;
+    // --- END ---
+
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 16),
       padding: EdgeInsets.all(14),
@@ -462,8 +469,12 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                   children: [
                     Icon(Icons.star, color: Colors.amber, size: 13),
                     SizedBox(width: 4),
-                    Text('${(_product!.averageRating ?? 0.0).toStringAsFixed(1)}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.black)),
-                    Text(' (${_product!.reviewCount})', style: TextStyle(fontSize: 10, color: Colors.black87)),
+                    
+                    // --- HERE ARE THE CHANGES ---
+                    // It now uses avgRating and _reviews.length
+                    Text('${avgRating.toStringAsFixed(1)}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.black)),
+                    Text(' (${_reviews.length})', style: TextStyle(fontSize: 10, color: Colors.black87)),
+                    // --- END OF CHANGES ---
                   ],
                 ),
               ),
@@ -542,90 +553,90 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
   Widget _buildDivider() => Container(margin: EdgeInsets.symmetric(horizontal: 16), height: 1, color: Colors.grey.shade300);
 
-  Widget _buildDetailsCard() {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          GestureDetector(
-            onTap: () => setState(() => _isDetailsExpanded = !_isDetailsExpanded),
-            child: Row(
-              children: [
-                Text('Product Details', style: TextStyle(fontSize: 15, color: Colors.black, fontWeight: FontWeight.bold)),
-                Spacer(),
-                Icon(_isDetailsExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, color: Colors.black54, size: 24),
-              ],
-            ),
+ Widget _buildDetailsCard() {
+  return Padding(
+    padding: EdgeInsets.symmetric(horizontal: 16),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          onTap: () => setState(() => _isDetailsExpanded = !_isDetailsExpanded),
+          child: Row(
+            children: [
+              Text('Product Details', style: TextStyle(fontSize: 15, color: Colors.black, fontWeight: FontWeight.bold)),
+              Spacer(),
+              Icon(_isDetailsExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, color: Colors.black54, size: 24),
+            ],
           ),
-          SizedBox(height: 10),
-          _buildDetailRow('Condition', _product!.condition.toUpperCase()),
-          if (_product!.brand != null) _buildDetailRow('Brand', _product!.brand!),
-          
-          // Color Selection
-          if (_product!.colors != null && _product!.colors!.isNotEmpty) ...[
-            SizedBox(height: 12),
-            Text('Color', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black)),
-            SizedBox(height: 6),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _product!.colors!.map((color) {
-                final isSelected = _selectedColor == color;
-                return GestureDetector(
-                  onTap: () => setState(() => _selectedColor = color),
-                  child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: isSelected ? Color(0xFFFF6B35) : Colors.white,
-                      border: Border.all(color: isSelected ? Color(0xFFFF6B35) : Colors.grey.shade300, width: 1.5),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(color, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isSelected ? Colors.white : Colors.black87)),
+        ),
+        SizedBox(height: 10),
+        _buildDetailRow('Condition', _product!.condition.toUpperCase()),
+        if (_product!.brand != null) _buildDetailRow('Brand', _product!.brand!),
+        
+        // Color Selection
+        if (_product!.colors != null && _product!.colors!.isNotEmpty) ...[
+          SizedBox(height: 12),
+          Text('Color', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black)),
+          SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _product!.colors!.map((color) {
+              final isSelected = _selectedColor == color;
+              return GestureDetector(
+                onTap: () => setState(() => _selectedColor = color),
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isSelected ? Color(0xFFFF6B35) : Colors.white,
+                    border: Border.all(color: isSelected ? Color(0xFFFF6B35) : Colors.grey.shade300, width: 1.5),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                );
-              }).toList(),
-            ),
-          ],
-          
-          // Size Selection
-          if (_product!.sizes != null && _product!.sizes!.isNotEmpty) ...[
-            SizedBox(height: 12),
-            Text('Size', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black)),
-            SizedBox(height: 6),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: _product!.sizes!.map((size) {
-                final isSelected = _selectedSize == size;
-                return GestureDetector(
-                  onTap: () => setState(() => _selectedSize = size),
-                  child: Container(
-                    padding: EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      color: isSelected ? Color(0xFFFF6B35) : Colors.white,
-                      border: Border.all(color: isSelected ? Color(0xFFFF6B35) : Colors.grey.shade300, width: 1.5),
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(size, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isSelected ? Colors.white : Colors.black87)),
-                  ),
-                );
-              }).toList(),
-            ),
-          ],
-          
-          if (_isDetailsExpanded) ...[
-            if (_product!.color != null) _buildDetailRow('Color', _product!.color!),
-            _buildDetailRow('Category', _product!.categoryName ?? 'N/A'),
-            SizedBox(height: 10),
-            Text('Description', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black)),
-            SizedBox(height: 5),
-            Text(_product!.description.isEmpty ? 'No description' : _product!.description, style: TextStyle(fontSize: 11, height: 1.4, color: Colors.black87)),
-          ],
+                  child: Text(color, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isSelected ? Colors.white : Colors.black87)),
+                ),
+              );
+            }).toList(),
+          ),
         ],
-      ),
-    );
-  }
+        
+        // Size Selection
+        if (_product!.sizes != null && _product!.sizes!.isNotEmpty) ...[
+          SizedBox(height: 12),
+          Text('Size', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black)),
+          SizedBox(height: 6),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: _product!.sizes!.map((size) {
+              final isSelected = _selectedSize == size;
+              return GestureDetector(
+                onTap: () => setState(() => _selectedSize = size),
+                child: Container(
+                  padding: EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: isSelected ? Color(0xFFFF6B35) : Colors.white,
+                    border: Border.all(color: isSelected ? Color(0xFFFF6B35) : Colors.grey.shade300, width: 1.5),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(size, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isSelected ? Colors.white : Colors.black87)),
+                ),
+              );
+            }).toList(),
+          ),
+        ],
+        
+        if (_isDetailsExpanded) ...[
+          // ❌ REMOVED THIS LINE: if (_product!.color != null) _buildDetailRow('Color', _product!.color!),
+          _buildDetailRow('Category', _product!.categoryName ?? 'N/A'),
+          SizedBox(height: 10),
+          Text('Description', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black)),
+          SizedBox(height: 5),
+          Text(_product!.description.isEmpty ? 'No description' : _product!.description, style: TextStyle(fontSize: 11, height: 1.4, color: Colors.black87)),
+        ],
+      ],
+    ),
+  );
+}
 
   Widget _buildDetailRow(String label, String value) {
     return Padding(

@@ -338,4 +338,67 @@ class ProductService {
     newProducts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return newProducts.take(limit).toList();
   }
+
+  // NEW AI-POWERED SEARCH FUNCTION
+  // We give it a new name so it doesn't break your old search
+  Future<List<ProductModel>> searchProductsWithAI(String query, {String? universityId}) async {
+    try {
+      // 1. Call the Edge Function
+      final response = await _supabase.functions.invoke(
+        'ai-search',
+        body: {
+          'query': query,
+          'userId': _supabase.auth.currentUser?.id,
+          'campusId': universityId,
+        },
+      );
+
+      // 2. Parse the list of products from the function's response
+      final productList = response.data['products'] as List;
+      
+      // 3. Use your existing _mapProduct helper to convert the JSON
+      return productList.map((json) => _mapProduct(json as Map<String, dynamic>)).toList();
+
+    } catch (e) {
+      // 4. If AI search fails, return an empty list or throw an error
+      print('AI search failed: $e');
+      // We don't call the fallback here, as this screen is AI-only
+      throw Exception('AI search failed: $e');
+    }
+  }
+
+  // Add this NEW method to ProductService class:
+
+Future<Map<String, dynamic>> searchProductsWithAIFull(
+  String query, 
+  {String? universityId}
+) async {
+  try {
+    final response = await _supabase.functions.invoke(
+      'ai-search',
+      body: {
+        'query': query,
+        'userId': _supabase.auth.currentUser?.id,
+        'campusId': universityId,
+      },
+    );
+
+    final data = response.data as Map<String, dynamic>;
+    final productList = data['products'] as List;
+    final aiResponse = data['aiResponse'] as Map<String, dynamic>?;
+    
+    return {
+      'products': productList.map((json) => _mapProduct(json as Map<String, dynamic>)).toList(),
+      'aiMessage': aiResponse?['message'] as String?,
+      'aiUnderstanding': aiResponse?['understanding'] as String?,
+      'confidence': aiResponse?['confidence'] as double? ?? 0.0,
+    };
+
+  } catch (e) {
+    print('AI search failed: $e');
+    throw Exception('AI search failed: $e');
+  }
+}
+
+
 }

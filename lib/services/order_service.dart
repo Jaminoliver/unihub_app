@@ -21,6 +21,8 @@ class OrderService {
     String? paymentReference,
     int? transactionId,
     String? notes,
+    String? selectedColor,
+    String? selectedSize,
   }) async {
     try {
       final double escrowAmount = _paymentService.calculateEscrowAmount(totalAmount, paymentMethod);
@@ -43,6 +45,8 @@ class OrderService {
           'notes': notes,
           'created_at': DateTime.now().toIso8601String(),
           'escrow_amount': escrowAmount,
+          'selected_color': selectedColor,
+          'selected_size': selectedSize,
         })
         .select('''
           *,
@@ -56,26 +60,24 @@ class OrderService {
       final newOrder = OrderModel.fromJson(response);
       final productName = newOrder.productName ?? 'your item';
 
-      // ✅ ADD orderId parameter
       await _notificationService.createNotification(
         userId: buyerId,
         type: NotificationType.orderPlaced,
         title: 'Order Placed Successfully',
         message: '$productName - Order #${newOrder.orderNumber}',
         orderNumber: newOrder.orderNumber,
-        orderId: newOrder.id,  // ✅ ADD THIS LINE
+        orderId: newOrder.id,
         amount: newOrder.totalAmount,
       );
 
       if (escrowAmount > 0) {
-        // ✅ ADD orderId parameter
         await _notificationService.createNotification(
           userId: buyerId,
           type: NotificationType.paymentEscrow,
           title: 'Payment Secured',
           message: 'Your payment of ₦${escrowAmount.toStringAsFixed(0)} for $productName is in escrow.',
           orderNumber: newOrder.orderNumber,
-          orderId: newOrder.id,  // ✅ ADD THIS LINE
+          orderId: newOrder.id,
           amount: escrowAmount,
         );
       }
@@ -87,8 +89,6 @@ class OrderService {
     }
   }
 
-  // ... rest of your methods remain the same ...
-  
   Future<List<OrderModel>> createMultipleOrders({
     required String buyerId,
     required List<Map<String, dynamic>> orderItems,
@@ -98,7 +98,6 @@ class OrderService {
   }) async {
     try {
       List<OrderModel> createdOrders = [];
-
       for (final item in orderItems) {
         final productId = item['productId'] as String;
         final order = await createOrder(
@@ -113,10 +112,11 @@ class OrderService {
           paymentReference: paymentReferences?[productId],
           transactionId: transactionIds?[productId],
           notes: item['notes'] as String?,
+          selectedColor: item['selectedColor'] as String?,
+          selectedSize: item['selectedSize'] as String?,
         );
         createdOrders.add(order);
       }
-
       return createdOrders;
     } catch (e) {
       print('Error creating multiple orders: $e');
@@ -137,9 +137,7 @@ class OrderService {
           .eq('buyer_id', buyerId)
           .order('created_at', ascending: false);
 
-      return (response as List)
-          .map((json) => OrderModel.fromJson(json as Map<String, dynamic>))
-          .toList();
+      return (response as List).map((json) => OrderModel.fromJson(json)).toList();
     } catch (e) {
       print('Error fetching buyer orders: $e');
       rethrow;
@@ -159,9 +157,7 @@ class OrderService {
           .eq('seller_id', sellerId)
           .order('created_at', ascending: false);
 
-      return (response as List)
-          .map((json) => OrderModel.fromJson(json as Map<String, dynamic>))
-          .toList();
+      return (response as List).map((json) => OrderModel.fromJson(json)).toList();
     } catch (e) {
       print('Error fetching seller orders: $e');
       rethrow;
@@ -188,119 +184,26 @@ class OrderService {
       return null;
     }
   }
-  
-  Future<OrderModel?> getOrderByNumber(String orderNumber) async {
-    try {
-      final response = await _supabase
-          .from('orders')
-          .select('''
-            *,
-            products(name, image_urls),
-            sellers!seller_id(id, business_name, user_id),
-            buyer:profiles!buyer_id(full_name),
-            delivery_addresses(address_line, city, state)
-          ''')
-          .eq('order_number', orderNumber)
-          .maybeSingle();
-
-      return response != null ? OrderModel.fromJson(response) : null;
-    } catch (e) {
-      print('Error fetching order by number: $e');
-      return null;
-    }
-  }
-
-  Future<bool> updateOrderStatus(String orderId, String newStatus) async {
-    try {
-      await _supabase
-          .from('orders')
-          .update({
-            'order_status': newStatus,
-            'updated_at': DateTime.now().toIso8601String(),
-          })
-          .eq('id', orderId);
-
-      return true;
-    } catch (e) {
-      print('Error updating order status: $e');
-      return false;
-    }
-  }
-
-  Future<bool> updatePaymentStatus(
-    String orderId,
-    String paymentStatus, {
-    String? paymentReference,
-    int? transactionId,
-  }) async {
-    try {
-      final Map<String, dynamic> updateData = {
-        'payment_status': paymentStatus,
-        'updated_at': DateTime.now().toIso8601String(),
-      };
-
-      if (paymentReference != null) {
-        updateData['payment_reference'] = paymentReference;
-      }
-
-      if (transactionId != null) {
-        updateData['transaction_id'] = transactionId;
-      }
-
-      if (paymentStatus == 'completed') {
-        updateData['payment_verified_at'] = DateTime.now().toIso8601String();
-      }
-
-      await _supabase.from('orders').update(updateData).eq('id', orderId);
-
-      return true;
-    } catch (e) {
-      print('Error updating payment status: $e');
-      return false;
-    }
-  }
 
   Future<bool> confirmDelivery(String orderId, String deliveryCode) async {
     try {
-      // Call the secure Edge Function to handle confirmation and payout
       final response = await _supabase.functions.invoke(
         'release-escrow',
-        body: {
-          'orderId': orderId,
-          'deliveryCode': deliveryCode,
-        },
+        body: {'orderId': orderId, 'deliveryCode': deliveryCode},
       );
 
-      // Check for a non-successful HTTP status (e.g., 400, 500)
       if (response.status != null && response.status! >= 300) {
-        String errorMessage = 'Failed to confirm delivery.';
-        // Check if the function sent back a specific error message
-        if (response.data != null && response.data['error'] != null) {
-          errorMessage = response.data['error'] as String;
-        }
-        print('Error from release-escrow function: $errorMessage');
-        throw Exception(errorMessage);
+        throw Exception(response.data?['error'] ?? 'Failed to confirm delivery');
       }
-
-      // If status is 2xx, it was successful
-      print('Edge function success: ${response.data['message']}');
-      
-      // The Edge Function now handles all notifications and DB updates
       return true;
-
     } catch (e) {
-      // This will catch both network errors and the exception we threw above
-      print('Error calling confirmDelivery: $e');
+      print('Error confirming delivery: $e');
       rethrow;
     }
   }
 
   Future<bool> cancelOrder(String orderId, String? reason) async {
     try {
-      print('🚫 Cancelling order: $orderId');
-      print('Reason: ${reason ?? "No reason provided"}');
-
-      // Call the refund-escrow Edge Function
       final response = await _supabase.functions.invoke(
         'refund-escrow',
         body: {
@@ -310,108 +213,24 @@ class OrderService {
         },
       );
 
-      // Check response status
       if (response.status != null && response.status! >= 300) {
-        String errorMessage = 'Failed to cancel order.';
-        if (response.data != null && response.data['error'] != null) {
-          errorMessage = response.data['error'] as String;
-        }
-        print('❌ Error from refund-escrow function: $errorMessage');
-        throw Exception(errorMessage);
+        throw Exception(response.data?['error'] ?? 'Failed to cancel order');
       }
-
-      print('✅ Order cancelled successfully: ${response.data['message']}');
       return true;
-
     } catch (e) {
-      print('❌ Error cancelling order: $e');
+      print('Error cancelling order: $e');
       rethrow;
     }
   }
 
-  /// Check if order can be cancelled (only pending/confirmed orders)
   bool canCancelOrder(OrderModel order) {
-    // Can only cancel if not shipped/delivered/already cancelled
-    return !['shipped', 'delivered', 'cancelled', 'refunded']
-        .contains(order.orderStatus);
+    return !['shipped', 'delivered', 'cancelled', 'refunded'].contains(order.orderStatus);
   }
 
-  /// Get time remaining before auto-cancel (returns null if > 6 days or already cancelled)
   Duration? getTimeUntilAutoCancel(OrderModel order) {
-    if (['delivered', 'cancelled', 'refunded'].contains(order.orderStatus)) {
-      return null;
-    }
-
-    final sixDaysFromCreation = order.createdAt.add(Duration(days: 6));
+    if (['delivered', 'cancelled', 'refunded'].contains(order.orderStatus)) return null;
+    final deadline = order.createdAt.add(Duration(days: 6));
     final now = DateTime.now();
-
-    if (now.isAfter(sixDaysFromCreation)) {
-      return null; // Already past deadline
-    }
-
-    return sixDaysFromCreation.difference(now);
-  }
-  Future<List<OrderModel>> getOrdersByStatus(
-    String userId,
-    List<String> statuses, {
-    bool isSeller = false,
-  }) async {
-    try {
-      final response = await _supabase
-          .from('orders')
-          .select('''
-            *,
-            products(name, image_urls),
-            ${isSeller ? 'buyer:profiles!buyer_id(full_name)' : 'sellers!seller_id(id, business_name)'},
-            delivery_addresses(address_line, city, state)
-          ''')
-          .eq(isSeller ? 'seller_id' : 'buyer_id', userId)
-          .inFilter('order_status', statuses)
-          .order('created_at', ascending: false);
-
-      return (response as List)
-          .map((json) => OrderModel.fromJson(json as Map<String, dynamic>))
-          .toList();
-    } catch (e) {
-      print('Error fetching orders by status: $e');
-      rethrow;
-    }
-  }
-
-  Future<double> getTotalSpent(String buyerId) async {
-    try {
-      final response = await _supabase
-          .from('orders')
-          .select('total_amount')
-          .eq('buyer_id', buyerId)
-          .inFilter('payment_status', ['completed', 'paid']);
-
-      double total = 0.0;
-      for (final order in response) {
-        total += (order['total_amount'] as num).toDouble();
-      }
-
-      return total;
-    } catch (e) {
-      print('Error calculating total spent: $e');
-      return 0.0;
-    }
-  }
-
-  Future<bool> hasPurchased(String buyerId, String productId) async {
-    try {
-      final response = await _supabase
-          .from('orders')
-          .select('id')
-          .eq('buyer_id', buyerId)
-          .eq('product_id', productId)
-          .eq('order_status', 'delivered')
-          .maybeSingle();
-
-      return response != null;
-    } catch (e) {
-      print('Error checking purchase: $e');
-      return false;
-    }
+    return now.isAfter(deadline) ? null : deadline.difference(now);
   }
 }

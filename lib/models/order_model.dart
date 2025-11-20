@@ -26,6 +26,8 @@ class OrderModel {
   final String? paymentReference; // Paystack payment reference
   final int? transactionId; // Paystack transaction ID
   final DateTime? paymentVerifiedAt; // When payment was verified
+  final String? selectedColor;
+  final String? selectedSize;
 
   // Joined data
   final String? productName;
@@ -59,6 +61,8 @@ class OrderModel {
     this.paymentReference,
     this.transactionId,
     this.paymentVerifiedAt,
+    this.selectedColor,
+    this.selectedSize,
     this.productName,
     this.productImageUrl,
     this.sellerName,
@@ -66,56 +70,60 @@ class OrderModel {
     this.deliveryAddress,
   });
 
-  factory OrderModel.fromJson(Map<String, dynamic> json) {
-    final product = json['products'] as Map<String, dynamic>?;
-    final seller = json['seller'] as Map<String, dynamic>?;
-    final buyer = json['buyer'] as Map<String, dynamic>?;
-    final address = json['delivery_addresses'] as Map<String, dynamic>?;
+ factory OrderModel.fromJson(Map<String, dynamic> json) {
+  final product = json['products'] as Map<String, dynamic>?;
+  final seller = json['seller'] as Map<String, dynamic>?;
+  final buyer = json['buyer'] as Map<String, dynamic>?;
+  final address = json['delivery_addresses'] as Map<String, dynamic>?;
 
-    return OrderModel(
-      id: json['id'] as String,
-      orderNumber: json['order_number'] as String,
-      buyerId: json['buyer_id'] as String,
-      sellerId: json['seller_id'] as String,
-      productId: json['product_id'] as String,
-      quantity: json['quantity'] as int,
-      unitPrice: (json['unit_price'] as num).toDouble(),
-      totalAmount: (json['total_amount'] as num).toDouble(),
-      paymentMethod: json['payment_method'] as String,
-      paymentStatus: json['payment_status'] as String? ?? 'pending',
-      orderStatus: json['order_status'] as String? ?? 'pending',
-      deliveryAddressId: json['delivery_address_id'] as String?,
-      deliveryCode: json['delivery_code'] as String?,
-      deliveryConfirmedAt: json['delivery_confirmed_at'] != null
-          ? DateTime.parse(json['delivery_confirmed_at'] as String)
-          : null,
-      escrowAmount: (json['escrow_amount'] as num?)?.toDouble() ?? 0,
-      escrowReleased: json['escrow_released'] as bool? ?? false,
-      commissionAmount: (json['commission_amount'] as num?)?.toDouble() ?? 0,
-      sellerPayoutAmount: json['seller_payout_amount'] != null
-          ? (json['seller_payout_amount'] as num).toDouble()
-          : null,
-      notes: json['notes'] as String?,
-      createdAt: DateTime.parse(json['created_at'] as String),
-      updatedAt: json['updated_at'] != null
-          ? DateTime.parse(json['updated_at'] as String)
-          : null,
-      paymentReference: json['payment_reference'] as String?,
-      transactionId: json['transaction_id'] as int?,
-      paymentVerifiedAt: json['payment_verified_at'] != null
-          ? DateTime.parse(json['payment_verified_at'] as String)
-          : null,
-      productName: product?['name'] as String?,
-      productImageUrl:
-          product?['image_urls'] != null &&
-                  (product!['image_urls'] as List).isNotEmpty
-              ? (product['image_urls'] as List).first as String?
-              : null,
-      sellerName: seller?['full_name'] as String?,
-      buyerName: buyer?['full_name'] as String?,
-      deliveryAddress: address?['address_line'] as String?,
-    );
-  }
+  return OrderModel(
+    id: json['id'] as String,
+    orderNumber: json['order_number'] as String,
+    buyerId: json['buyer_id'] as String,
+    sellerId: json['seller_id'] as String,
+    productId: json['product_id'] as String,
+    quantity: json['quantity'] as int,
+    unitPrice: (json['unit_price'] as num).toDouble(),
+    totalAmount: (json['total_amount'] as num).toDouble(),
+    paymentMethod: json['payment_method'] as String,
+    paymentStatus: json['payment_status'] as String? ?? 'pending',
+    orderStatus: json['order_status'] as String? ?? 'pending',
+    deliveryAddressId: json['delivery_address_id'] as String?,
+    deliveryCode: json['delivery_code'] as String?,
+    deliveryConfirmedAt: json['delivery_confirmed_at'] != null
+        ? DateTime.parse(json['delivery_confirmed_at'] as String)
+        : null,
+    escrowAmount: (json['escrow_amount'] as num?)?.toDouble() ?? 0,
+    escrowReleased: json['escrow_released'] as bool? ?? false,
+    commissionAmount: (json['commission_amount'] as num?)?.toDouble() ?? 0,
+    sellerPayoutAmount: json['seller_payout_amount'] != null
+        ? (json['seller_payout_amount'] as num).toDouble()
+        : null,
+    notes: json['notes'] as String?,
+    createdAt: DateTime.parse(json['created_at'] as String),
+    updatedAt: json['updated_at'] != null
+        ? DateTime.parse(json['updated_at'] as String)
+        : null,
+    paymentReference: json['payment_reference'] as String?,
+    transactionId: json['transaction_id'] as int?,
+    paymentVerifiedAt: json['payment_verified_at'] != null
+        ? DateTime.parse(json['payment_verified_at'] as String)
+        : null,
+    // ✅ ADD THESE TWO LINES:
+    selectedColor: json['selected_color'] as String?,
+    selectedSize: json['selected_size'] as String?,
+    // END OF NEW LINES
+    productName: product?['name'] as String?,
+    productImageUrl:
+        product?['image_urls'] != null &&
+                (product!['image_urls'] as List).isNotEmpty
+            ? (product['image_urls'] as List).first as String?
+            : null,
+    sellerName: seller?['full_name'] as String?,
+    buyerName: buyer?['full_name'] as String?,
+    deliveryAddress: address?['address_line'] as String?,
+  );
+}
 
   Map<String, dynamic> toJson() {
     return {
@@ -143,6 +151,8 @@ class OrderModel {
       'payment_reference': paymentReference,
       'transaction_id': transactionId,
       'payment_verified_at': paymentVerifiedAt?.toIso8601String(),
+      'selected_color': selectedColor,
+      'selected_size': selectedSize,
     };
   }
 

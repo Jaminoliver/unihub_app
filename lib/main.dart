@@ -13,7 +13,7 @@ import 'services/push_notification_service.dart';
 // Your existing screen imports
 import 'screens/splash_screen.dart';
 import 'screens/home_screen.dart';
-import 'screens/categories_screen.dart';
+import 'screens/vibe_search_screen.dart';  
 import 'screens/cart_screen.dart';
 import 'screens/orders_screen.dart';
 import 'screens/profile_screen.dart';
@@ -100,7 +100,7 @@ class _BottomNavBarState extends State<BottomNavBar> {
   int _cartRefreshKey = 0;
   int _ordersRefreshKey = 0;
 
-  final _pageTitles = ['Home', 'Categories', 'My Cart', 'My Orders', 'Profile'];
+  final _pageTitles = ['Home', 'Vibe', 'My Cart', 'My Orders', 'Profile'];  // ✅ CHANGED 'Categories' to 'Vibe'
 
   @override
   void initState() {
@@ -214,9 +214,9 @@ class _BottomNavBarState extends State<BottomNavBar> {
                 selectedIcon: Icon(Icons.home),
                 label: 'Home'),
             NavigationDestination(
-                icon: Icon(Icons.category_outlined),
-                selectedIcon: Icon(Icons.category),
-                label: 'Categories'),
+                icon: Icon(Icons.auto_awesome_outlined),      // ✅ CHANGED
+                selectedIcon: Icon(Icons.auto_awesome),       // ✅ CHANGED
+                label: 'Vibe'),                               // ✅ CHANGED
             NavigationDestination(
                 icon: Icon(Icons.shopping_cart_outlined),
                 selectedIcon: Icon(Icons.shopping_cart),
@@ -240,7 +240,7 @@ class _BottomNavBarState extends State<BottomNavBar> {
       case 0:
         return HomeScreen(scrollController: _homeScrollController);
       case 1:
-        return const CategoriesScreen();
+        return VibeSearchScreen();
       case 2:
         return CartScreen(
           key: ValueKey('cart_$_cartRefreshKey'),

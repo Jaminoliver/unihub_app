@@ -48,7 +48,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     _deliveryCodeController.dispose();
     super.dispose();
   }
-
 Future<void> _loadOrder() async {
   setState(() => _isLoading = true);
   try {
@@ -59,10 +58,9 @@ Future<void> _loadOrder() async {
     });
     
     // Load existing review if order is delivered
-    if (_order?.isDelivered == true) [
-      SizedBox(height: 16),
-      _buildReviewSection(),
-    ];
+    if (_order?.isDelivered == true) {
+      await _loadExistingReview();
+    }
   } catch (e) {
     setState(() => _isLoading = false);
     ScaffoldMessenger.of(context).showSnackBar(
@@ -574,97 +572,112 @@ String _getPaymentMethodText() {
   }
 }
 
-  Widget _buildProductCard() {
-    return Container(
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: Offset(0, 2),
+ Widget _buildProductCard() {
+  return Container(
+    padding: EdgeInsets.all(16),
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(12),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withOpacity(0.05),
+          blurRadius: 10,
+          offset: Offset(0, 2),
+        ),
+      ],
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Product Details',
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.bold,
+            color: Colors.black87,
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Product Details',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
-          ),
-          SizedBox(height: 16),
-          Row(
-            children: [
-              if (_order!.productImageUrl != null)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
-                    _order!.productImageUrl!,
-                    width: 70,
-                    height: 70,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => Container(
-                      width: 70,
-                      height: 70,
-                      color: Colors.grey[200],
-                      child: Icon(Icons.image, color: Colors.grey),
-                    ),
-                  ),
-                )
-              else
-                Container(
+        ),
+        SizedBox(height: 16),
+        Row(
+          children: [
+            if (_order!.productImageUrl != null)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(
+                  _order!.productImageUrl!,
                   width: 70,
                   height: 70,
-                  decoration: BoxDecoration(
+                  fit: BoxFit.cover,
+                  errorBuilder: (context, error, stackTrace) => Container(
+                    width: 70,
+                    height: 70,
                     color: Colors.grey[200],
-                    borderRadius: BorderRadius.circular(8),
+                    child: Icon(Icons.image, color: Colors.grey),
                   ),
-                  child: Icon(Icons.image, color: Colors.grey),
                 ),
-              SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _order!.productName ?? 'Product',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
+              )
+            else
+              Container(
+                width: 70,
+                height: 70,
+                decoration: BoxDecoration(
+                  color: Colors.grey[200],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.image, color: Colors.grey),
+              ),
+            SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _order!.productName ?? 'Product',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
                     ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Qty: ${_order!.quantity}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  ),
+                  // ADD THESE LINES:
+                  if (_order!.selectedSize != null) ...[
                     SizedBox(height: 4),
                     Text(
-                      'Qty: ${_order!.quantity}',
+                      'Size: ${_order!.selectedSize}',
                       style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                     ),
+                  ],
+                  if (_order!.selectedColor != null) ...[
                     SizedBox(height: 4),
                     Text(
-                      _order!.formattedTotal,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFFFF6B35),
-                      ),
+                      'Color: ${_order!.selectedColor}',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                     ),
                   ],
-                ),
+                  SizedBox(height: 4),
+                  Text(
+                    _order!.formattedTotal,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFFFF6B35),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+            ),
+          ],
+        ),
+      ],
+    ),
+  );
+}
 
   Widget _buildDeliveryCard() {
     return Container(
