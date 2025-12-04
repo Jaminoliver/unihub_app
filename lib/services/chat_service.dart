@@ -1,283 +1,188 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
-
-class ChatMessage {
-  final String id;
-  final String content;
-  final String sender; // 'user' or 'ai'
-  final DateTime timestamp;
-  final List<ProductRecommendation>? products;
-  final bool showProductCard;
-
-  ChatMessage({
-    required this.id,
-    required this.content,
-    required this.sender,
-    required this.timestamp,
-    this.products,
-    this.showProductCard = false,
-  });
-
-  factory ChatMessage.fromJson(Map<String, dynamic> json) {
-    final productList = json['products'] as List?;
-    return ChatMessage(
-      id: json['id']?.toString() ?? DateTime.now().toString(), // Safety check
-      content: json['message']?.toString() ?? '', // Safety check
-      sender: json['sender']?.toString() ?? 'unknown',
-      timestamp: json['created_at'] != null 
-          ? DateTime.parse(json['created_at'].toString()) 
-          : DateTime.now(),
-      products: productList?.map((p) => ProductRecommendation.fromJson(p)).toList(),
-      showProductCard: json['should_show_card'] as bool? ?? false,
-    );
-  }
-}
-
-class ProductRecommendation {
-  final String id;
-  final String name;
-  final double price;
-  final String imageUrl;
-  final String reason;
-
-  ProductRecommendation({
-    required this.id,
-    required this.name,
-    required this.price,
-    required this.imageUrl,
-    required this.reason,
-  });
-
-  factory ProductRecommendation.fromJson(Map<String, dynamic> json) {
-    return ProductRecommendation(
-      id: json['id']?.toString() ?? '',
-      name: json['name']?.toString() ?? 'Unknown Product',
-      // Handle cases where price might be int, double, or string
-      price: (json['price'] is num) 
-          ? (json['price'] as num).toDouble() 
-          : double.tryParse(json['price']?.toString() ?? '0') ?? 0.0,
-      // 🛡️ FIX: Handle null image_url gracefully
-      imageUrl: json['image_url']?.toString() ?? '', 
-      // 🛡️ FIX: Handle null reason gracefully
-      reason: json['reason']?.toString() ?? 'Recommended for you', 
-    );
-  }
-}
+import 'package:uuid/uuid.dart';
+import '../models/chat_message_model.dart';
+import '../models/chat_interaction_model.dart';
+import '../models/product_model.dart';
+import '../main.dart';
 
 class ChatService {
-  final SupabaseClient _supabase = Supabase.instance.client;
+  static final ChatService _instance = ChatService._internal();
+  factory ChatService() => _instance;
+  ChatService._internal();
 
-  /// Send a message and get AI response with product recommendations
-  Future<ChatMessage> sendMessage({
-    required String message,
-    required String conversationId,
-    String? state,
-    Map<String, dynamic>? userContext,
+  final List<ChatMessageModel> _conversationHistory = [];
+  String? _currentSessionId;
+
+  final _uuid = const Uuid();
+
+  // Initialize (no longer needed for edge function, but keep for compatibility)
+  void initialize() {
+    _conversationHistory.clear();
+    _currentSessionId = null;
+  }
+
+  // Get conversation history
+  List<ChatMessageModel> get conversationHistory => List.unmodifiable(_conversationHistory);
+
+  // Send message via Supabase Edge Function
+  Future<ChatMessageModel> sendMessage({
+    required String userMessage,
+    required String userId,
+    required String userUniversity,
+    required String userState,
+    List<ProductModel>? contextProducts, // Not needed anymore
   }) async {
     try {
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) throw Exception('User not authenticated');
+      // Add user message to history
+      final userMsg = ChatMessageModel.text(
+        id: _uuid.v4(),
+        content: userMessage,
+        sender: MessageSender.user,
+      );
+      _conversationHistory.add(userMsg);
 
-      print('🔵 Sending message to AI...');
-      print('📝 Message: $message');
-
-      // Get recent conversation history
-      final history = await getConversationHistory(conversationId, limit: 6);
-
-      // Call Edge Function
-      print('🚀 Calling vibes-chat function...');
-      final response = await _supabase.functions.invoke(
-        'vibes-chat',
+      // Call Supabase Edge Function
+      final response = await supabase.functions.invoke(
+        'ai-chat',
         body: {
-          'messages': [
-            ...history.map((msg) => {
-                  'role': msg.sender,
-                  'content': msg.content,
-                }),
-            {'role': 'user', 'content': message}
-          ],
-          'user_id': userId,
-          'conversation_id': conversationId,
-          'state': state,
-          'context': {
-            'recent_activity': userContext?['recent_activity'],
-            'location': userContext?['location'],
-            'preferences': userContext?['preferences'],
-          },
+          'query': userMessage,
+          'userId': userId,
+          'userUniversity': userUniversity,
+          'userState': userState,
         },
       );
 
-      final data = response.data as Map<String, dynamic>;
-
-      // Save user message to DB
-      await _saveMessage(
-        conversationId: conversationId,
-        userId: userId,
-        content: message,
-        sender: 'user',
-      );
-
-      // 🛡️ FIX: Handle missing 'response' key safely
-      // Sometimes AI returns 'message' instead of 'response', or nothing at all
-      final responseContent = data['response']?.toString() ?? 
-                            data['message']?.toString() ?? 
-                            "I'm having a bit of trouble connecting. Try again?";
-
-      final aiMessageId = await _saveMessage(
-        conversationId: conversationId,
-        userId: userId,
-        content: responseContent,
-        sender: 'ai',
-        products: data['products'] as List?,
-        showCard: data['should_show_card'] as bool? ?? false,
-      );
-
-      print('✅ Message saved successfully');
-
-      return ChatMessage(
-        id: aiMessageId,
-        content: responseContent,
-        sender: 'ai',
-        timestamp: DateTime.now(),
-        products: (data['products'] as List?)
-            ?.map((p) => ProductRecommendation.fromJson(p))
-            .toList(),
-        showProductCard: data['should_show_card'] as bool? ?? false,
-      );
-    } catch (e, stackTrace) {
-      print('❌ Chat error: $e');
-      print('📍 Stack trace: $stackTrace');
-      throw Exception('Failed to send message: $e');
-    }
-  }
-
-  /// Get conversation history
-  Future<List<ChatMessage>> getConversationHistory(
-    String conversationId, {
-    int limit = 50,
-  }) async {
-    try {
-      final response = await _supabase
-          .from('chat_messages')
-          .select('*')
-          .eq('conversation_id', conversationId)
-          .order('created_at', ascending: true)
-          .limit(limit);
-
-      return (response as List)
-          .map((json) => ChatMessage.fromJson(json))
-          .toList();
-    } catch (e) {
-      print('Error fetching history: $e');
-      return [];
-    }
-  }
-
-  /// Get or create conversation for current user
-  Future<String> getOrCreateConversation() async {
-    try {
-      final userId = _supabase.auth.currentUser?.id;
-      if (userId == null) throw Exception('User not authenticated');
-
-      // Check for existing active conversation
-      final existing = await _supabase
-          .from('conversations')
-          .select('id')
-          .eq('user_id', userId)
-          .eq('is_active', true)
-          .maybeSingle();
-
-      if (existing != null) {
-        return existing['id'] as String;
+      if (response.data == null) {
+        throw Exception('No response from AI service');
       }
 
-      return await startNewConversation();
+      final data = response.data as Map<String, dynamic>;
+      final aiMessage = data['message'] as String;
+      final productIds = data['productIds'] as List<dynamic>?;
+
+      // Debug logging
+      print('🤖 AI Response: $aiMessage');
+      print('📦 Product IDs: $productIds');
+
+      // Create AI message
+      ChatMessageModel aiMsg;
+      if (productIds != null && productIds.isNotEmpty) {
+        aiMsg = ChatMessageModel.productCarousel(
+          id: _uuid.v4(),
+          content: aiMessage,
+          productIds: productIds.map((id) => id.toString()).toList(),
+        );
+      } else {
+        aiMsg = ChatMessageModel.text(
+          id: _uuid.v4(),
+          content: aiMessage,
+          sender: MessageSender.ai,
+        );
+      }
+
+      _conversationHistory.add(aiMsg);
+
+      // Save session if needed
+      if (_currentSessionId == null) {
+        await _createSession(userId);
+      } else {
+        await _updateSession();
+      }
+
+      return aiMsg;
     } catch (e) {
-      print('❌ Failed to get conversation: $e');
-      // Fallback: Just return a new local ID if DB fails to avoid blocking user
-      return DateTime.now().millisecondsSinceEpoch.toString();
+      print('Chat error: $e');
+      final errorMsg = ChatMessageModel.error(
+        'Oops! Something went wrong 😅\nPlease try again.',
+      );
+      _conversationHistory.add(errorMsg);
+      return errorMsg;
     }
   }
 
-  /// 🆕 Force create a NEW conversation ID (Wipes memory)
-  Future<String> startNewConversation() async {
-    final userId = _supabase.auth.currentUser?.id;
-    if (userId == null) throw Exception('User not authenticated');
-
-    print('🔄 Starting fresh conversation...');
-
-    // Optional: Mark all old conversations as inactive
+  Future<void> _createSession(String userId) async {
     try {
-      await _supabase
-          .from('conversations')
-          .update({'is_active': false}).eq('user_id', userId);
+      _currentSessionId = _uuid.v4();
+      await supabase.from('chat_sessions').insert({
+        'id': _currentSessionId,
+        'user_id': userId,
+        'messages': _conversationHistory.map((m) => m.toJson()).toList(),
+      });
+    } catch (e) {
+      print('Error creating session: $e');
+    }
+  }
 
-      // Create new active conversation
-      final newConv = await _supabase
-          .from('conversations')
-          .insert({
-            'user_id': userId,
-            'is_active': true,
-            'created_at': DateTime.now().toIso8601String(),
-          })
-          .select('id')
+  Future<void> _updateSession() async {
+    if (_currentSessionId == null) return;
+    try {
+      await supabase.from('chat_sessions').update({
+        'messages': _conversationHistory.map((m) => m.toJson()).toList(),
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', _currentSessionId!);
+    } catch (e) {
+      print('Error updating session: $e');
+    }
+  }
+
+  // Track product click
+  Future<void> trackProductClick(String interactionId, String productId) async {
+    try {
+      final interaction = await supabase
+          .from('chat_interactions')
+          .select()
+          .eq('id', interactionId)
           .single();
-      
-      return newConv['id'] as String;
+
+      final clickedIds = List<String>.from(interaction['product_ids_clicked'] ?? []);
+      if (!clickedIds.contains(productId)) {
+        clickedIds.add(productId);
+        await supabase
+            .from('chat_interactions')
+            .update({'product_ids_clicked': clickedIds})
+            .eq('id', interactionId);
+      }
     } catch (e) {
-      print('⚠️ Error creating convo in DB, using local ID: $e');
-      return DateTime.now().millisecondsSinceEpoch.toString();
+      print('Error tracking click: $e');
     }
   }
 
-  /// Save message to database
-  Future<String> _saveMessage({
-    required String conversationId,
-    required String userId,
-    required String content,
-    required String sender,
-    List<dynamic>? products,
-    bool showCard = false,
-  }) async {
+  // Track add to cart
+  Future<void> trackAddToCart(String interactionId, String productId) async {
     try {
-      final response = await _supabase
-          .from('chat_messages')
-          .insert({
-            'conversation_id': conversationId,
-            'user_id': userId,
-            'message': content,
-            'sender': sender,
-            'products': products,
-            'should_show_card': showCard,
-            'created_at': DateTime.now().toIso8601String(),
-          })
-          .select('id')
+      final interaction = await supabase
+          .from('chat_interactions')
+          .select()
+          .eq('id', interactionId)
           .single();
 
-      return response['id'] as String;
+      final cartIds = List<String>.from(interaction['product_ids_added_to_cart'] ?? []);
+      if (!cartIds.contains(productId)) {
+        cartIds.add(productId);
+        await supabase
+            .from('chat_interactions')
+            .update({'product_ids_added_to_cart': cartIds})
+            .eq('id', interactionId);
+      }
     } catch (e) {
-      print('⚠️ Failed to save message to history: $e');
-      return 'temp-${DateTime.now().millisecondsSinceEpoch}';
+      print('Error tracking cart add: $e');
     }
   }
-  
-  /// 🆕 Send Feedback (Thumbs Up/Down)
-  Future<void> sendFeedback({
-    required String conversationId,
-    required String messageContent,
-    required bool isPositive,
-  }) async {
-    try {
-      await _supabase
-          .from('ai_logs')
-          .update({
-            'user_feedback': isPositive ? 'thumbs_up' : 'thumbs_down'
-          })
-          .eq('conversation_id', conversationId)
-          .eq('ai_response_text', messageContent); 
 
-      print('✅ Feedback recorded');
+  // Submit feedback
+  Future<void> submitFeedback(String interactionId, bool wasHelpful, String? feedbackText) async {
+    try {
+      await supabase.from('chat_interactions').update({
+        'was_helpful': wasHelpful,
+        'feedback_text': feedbackText,
+      }).eq('id', interactionId);
     } catch (e) {
-      print('❌ Failed to record feedback: $e');
+      print('Error submitting feedback: $e');
     }
+  }
+
+  // Clear conversation
+  void clearConversation() {
+    _conversationHistory.clear();
+    _currentSessionId = null;
   }
 }

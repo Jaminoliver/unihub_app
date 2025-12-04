@@ -10,6 +10,11 @@ import '../services/reviews_service.dart';
 import '../services/auth_service.dart';
 import '../widgets/leave_review_dialog.dart';
 import 'package:intl/intl.dart';
+// ✅ ADD DISPUTE IMPORTS
+import '../services/dispute_service.dart';
+import '../widgets/dispute_dialog.dart';
+import 'dispute_details_screen.dart';
+import '../models/dispute_model.dart';
 
 
 class OrderDetailsScreen extends StatefulWidget {
@@ -29,13 +34,16 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   final TextEditingController _deliveryCodeController = TextEditingController();
   final ReviewService _reviewService = ReviewService();
   final AuthService _authService = AuthService();
+  // ✅ ADD DISPUTE SERVICE
+  final DisputeService _disputeService = DisputeService();
 
   OrderModel? _order;
   bool _isLoading = true;
-  bool _isConfirming = false;
-  bool _isCancelling = false;
   ReviewModel? _existingReview;
   bool _isLoadingReview = false;
+  // ✅ ADD DISPUTE STATE
+  DisputeModel? _existingDispute;
+  bool _isLoadingDispute = false;
 
   @override
   void initState() {
@@ -48,80 +56,146 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
     _deliveryCodeController.dispose();
     super.dispose();
   }
-Future<void> _loadOrder() async {
-  setState(() => _isLoading = true);
-  try {
-    final order = await _orderService.getOrderById(widget.orderId);
-    setState(() {
-      _order = order;
-      _isLoading = false;
-    });
-    
-    // Load existing review if order is delivered
-    if (_order?.isDelivered == true) {
-      await _loadExistingReview();
-    }
-  } catch (e) {
-    setState(() => _isLoading = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Error loading order: $e')),
-    );
-  }
-}
 
-Future<void> _loadExistingReview() async {
-  setState(() => _isLoadingReview = true);
-  try {
-    final userId = _authService.currentUserId;
-    if (userId != null) {
-      final review = await _reviewService.getUserReviewForOrder(userId, widget.orderId);
+  Future<void> _loadOrder() async {
+    setState(() => _isLoading = true);
+    try {
+      final order = await _orderService.getOrderById(widget.orderId);
+      setState(() {
+        _order = order;
+        _isLoading = false;
+      });
+      
+      // Load existing review if order is delivered
+      if (_order?.isDelivered == true) {
+        await _loadExistingReview();
+      }
+      
+      // ✅ ADD DISPUTE LOADING
+      await _loadDisputeStatus();
+    } catch (e) {
+      setState(() => _isLoading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error loading order: $e')),
+      );
+    }
+  }
+
+  // ✅ ADD DISPUTE LOADING METHOD
+  Future<void> _loadDisputeStatus() async {
+    if (_order == null) return;
+    
+    setState(() => _isLoadingDispute = true);
+    try {
+      final dispute = await _disputeService.getDisputeByOrderId(_order!.id);
       if (mounted) {
         setState(() {
-          _existingReview = review;
-          _isLoadingReview = false;
+          _existingDispute = dispute;
+          _isLoadingDispute = false;
         });
       }
+    } catch (e) {
+      print('Error loading dispute: $e');
+      setState(() => _isLoadingDispute = false);
     }
-  } catch (e) {
-    print('Error loading review: $e');
-    setState(() => _isLoadingReview = false);
   }
-}
 
-Future<void> _showLeaveReviewDialog() async {
-  final result = await showDialog<bool>(
-    context: context,
-    builder: (context) => LeaveReviewDialog(
-      productName: _order!.productName ?? 'Product',
-      productImageUrl: _order!.productImageUrl,
-      onSubmit: (rating, comment) async {
-        final userId = _authService.currentUserId;
-        if (userId == null) throw Exception('User not logged in');
+  Future<void> _loadExistingReview() async {
+    setState(() => _isLoadingReview = true);
+    try {
+      final userId = _authService.currentUserId;
+      if (userId != null) {
+        final review = await _reviewService.getUserReviewForOrder(userId, widget.orderId);
+        if (mounted) {
+          setState(() {
+            _existingReview = review;
+            _isLoadingReview = false;
+          });
+        }
+      }
+    } catch (e) {
+      print('Error loading review: $e');
+      setState(() => _isLoadingReview = false);
+    }
+  }
 
-        final success = await _reviewService.submitReview(
-          productId: _order!.productId,
-          userId: userId,
-          orderId: widget.orderId,
-          rating: rating,
-          comment: comment,
-        );
+  Future<void> _showLeaveReviewDialog() async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => LeaveReviewDialog(
+        productName: _order!.productName ?? 'Product',
+        productImageUrl: _order!.productImageUrl,
+        onSubmit: (rating, comment) async {
+          final userId = _authService.currentUserId;
+          if (userId == null) throw Exception('User not logged in');
 
-        if (!success) throw Exception('Failed to submit review');
-      },
-    ),
-  );
+          final success = await _reviewService.submitReview(
+            productId: _order!.productId,
+            userId: userId,
+            orderId: widget.orderId,
+            rating: rating,
+            comment: comment,
+          );
 
-  if (result == true) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Thank you for your review!'),
-        backgroundColor: Colors.green,
-        duration: Duration(seconds: 3),
+          if (!success) throw Exception('Failed to submit review');
+        },
       ),
     );
-    _loadExistingReview();
+
+    if (result == true) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Thank you for your review!'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 3),
+        ),
+      );
+      _loadExistingReview();
+    }
   }
-}
+
+  // ✅ ADD DISPUTE METHODS
+  Future<void> _openRaiseDisputeDialog() async {
+    final userId = _authService.currentUserId;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Please log in to raise a dispute')),
+      );
+      return;
+    }
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (context) => RaiseDisputeDialog(
+        order: _order!,
+        userId: userId,
+      ),
+    );
+
+    if (result == true) {
+      await _loadDisputeStatus();
+    }
+  }
+
+  void _viewDisputeDetails() {
+    if (_existingDispute != null) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => DisputeDetailsScreen(
+            disputeId: _existingDispute!.id,
+          ),
+        ),
+      ).then((_) => _loadDisputeStatus());
+    }
+  }
+
+  bool _canRaiseDispute() {
+    if (_order == null) return false;
+    
+    // Can raise dispute for any order that's not cancelled
+    return !_order!.isCancelled;
+  }
 
   Future<void> _confirmDelivery() async {
     final code = _deliveryCodeController.text.trim();
@@ -132,8 +206,6 @@ Future<void> _showLeaveReviewDialog() async {
       );
       return;
     }
-
-    setState(() => _isConfirming = true);
 
     try {
       final success = await _orderService.confirmDelivery(widget.orderId, code);
@@ -158,103 +230,6 @@ Future<void> _showLeaveReviewDialog() async {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
       );
-    } finally {
-      setState(() => _isConfirming = false);
-    }
-  }
-
-  Future<void> _cancelOrder() async {
-    // Show confirmation dialog
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Cancel Order?'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Are you sure you want to cancel this order?'),
-            SizedBox(height: 12),
-            if (_order!.paymentMethod != 'pod') ...[
-              Container(
-                padding: EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.green[50],
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.green[200]!),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline, color: Colors.green[700], size: 20),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Your payment of ₦${_order!.escrowAmount?.toStringAsFixed(0)} will be refunded within 5-7 business days.',
-                        style: TextStyle(fontSize: 12, color: Colors.green[900]),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: Text('No, Keep Order', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: Text('Yes, Cancel Order'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    setState(() => _isCancelling = true);
-
-    try {
-      final success = await _orderService.cancelOrder(
-        widget.orderId,
-        'Cancelled by buyer',
-      );
-
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(_order!.paymentMethod == 'pod'
-                ? 'Order cancelled successfully!'
-                : 'Order cancelled! Refund will be processed within 5-7 business days.'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 4),
-          ),
-        );
-        
-        // Navigate back to orders screen
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(builder: (context) => OrdersScreen(initialTab: 1)),
-          (route) => route.isFirst,
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error cancelling order: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    } finally {
-      if (mounted) {
-        setState(() => _isCancelling = false);
-      }
     }
   }
 
@@ -304,27 +279,19 @@ Future<void> _showLeaveReviewDialog() async {
                     _buildDeliveryCard(),
                     SizedBox(height: 16),
                     _buildPaymentCard(),
-                    
-                    // Show auto-cancel warning if applicable
-                    if (_orderService.canCancelOrder(_order!)) ...[
-                      SizedBox(height: 16),
-                      _buildAutoCancelWarning(),
-                    ],
 
                     if (_order!.isDelivered) ...[
                       SizedBox(height: 16),
                       _buildReviewSection(),
                     ],
                     
+                    // ✅ DISPUTE SECTION - ALWAYS SHOWN
+                    SizedBox(height: 16),
+                    _buildDisputeSection(),
+                    
                     if (!_order!.isDelivered && !_order!.isCancelled) ...[
                       SizedBox(height: 16),
                       _buildDeliveryConfirmationCard(),
-                      
-                      // Cancel button - only for cancellable orders
-                      if (_orderService.canCancelOrder(_order!)) ...[
-                        SizedBox(height: 12),
-                        _buildCancelButton(),
-                      ],
                     ],
                     SizedBox(height: 32),
                   ],
@@ -332,41 +299,218 @@ Future<void> _showLeaveReviewDialog() async {
     );
   }
 
-  Widget _buildAutoCancelWarning() {
-    final timeRemaining = _orderService.getTimeUntilAutoCancel(_order!);
+  // ✅ ADD DISPUTE SECTION WIDGET
+  Widget _buildDisputeSection() {
+    print('=== _buildDisputeSection DEBUG ===');
+    print('_isLoadingDispute: $_isLoadingDispute');
+    print('_existingDispute: $_existingDispute');
+    print('_order is null: ${_order == null}');
+    if (_order != null) {
+      print('_order.isCancelled: ${_order!.isCancelled}');
+      print('_canRaiseDispute(): ${_canRaiseDispute()}');
+    }
+    print('===================================');
     
-    if (timeRemaining == null) return SizedBox.shrink();
+    if (_isLoadingDispute) {
+      return Container(
+        padding: EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Center(
+          child: CircularProgressIndicator(color: Color(0xFFFF6B35)),
+        ),
+      );
+    }
 
-    final daysLeft = timeRemaining.inDays;
-    final hoursLeft = timeRemaining.inHours % 24;
+    // If an existing dispute exists, always show it
+    if (_existingDispute != null) {
+      return Container(
+        padding: EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.report_problem, color: Colors.orange[700], size: 20),
+                SizedBox(width: 8),
+                Text(
+                  'Active Dispute',
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 12),
+            Container(
+              padding: EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: _getDisputeStatusColor().withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: _getDisputeStatusColor().withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  Icon(_getDisputeStatusIcon(), color: _getDisputeStatusColor(), size: 20),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _existingDispute!.statusDisplayText,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: _getDisputeStatusColor(),
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          _existingDispute!.reasonDisplayText,
+                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: OutlinedButton.icon(
+                onPressed: _viewDisputeDetails,
+                icon: Icon(Icons.visibility, size: 18),
+                label: Text('View Dispute Details'),
+                style: OutlinedButton.styleFrom(
+                  side: BorderSide(color: Colors.orange[700]!, width: 2),
+                  foregroundColor: Colors.orange[700],
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
 
+    // No existing dispute - show "Raise Dispute" button if order allows it
+    if (_canRaiseDispute()) {
+      return Container(
+        padding: EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Colors.orange[50]!, Colors.red[50]!],
+          ),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.orange[200]!),
+        ),
+        child: Column(
+          children: [
+            Icon(Icons.report_problem, size: 40, color: Colors.orange[700]),
+            SizedBox(height: 12),
+            Text(
+              'Issue with your order?',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87,
+              ),
+            ),
+            SizedBox(height: 4),
+            Text(
+              'We\'re here to help resolve any problems',
+              style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 50,
+              child: ElevatedButton.icon(
+                onPressed: _openRaiseDisputeDialog,
+                icon: Icon(Icons.flag, size: 20),
+                label: Text(
+                  'Raise a Dispute',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.orange[700],
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  elevation: 2,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Default: Show info card that disputes can be raised later
     return Container(
-      padding: EdgeInsets.all(14),
+      padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.orange[50],
+        color: Colors.grey[50],
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.orange[200]!),
+        border: Border.all(color: Colors.grey[200]!),
       ),
       child: Row(
         children: [
-          Icon(Icons.timer, color: Colors.orange[700], size: 22),
+          Icon(Icons.info_outline, color: Colors.grey[600], size: 24),
           SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Auto-Cancel Warning',
+                  'Dispute Resolution Available',
                   style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.orange[900],
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey[800],
                   ),
                 ),
                 SizedBox(height: 4),
                 Text(
-                  'This order will be automatically cancelled and refunded in $daysLeft day${daysLeft != 1 ? 's' : ''} ${hoursLeft}h if not delivered.',
-                  style: TextStyle(fontSize: 11, color: Colors.orange[800]),
+                  _order!.isCancelled
+                      ? 'This order has been cancelled. Contact support if you need assistance.'
+                      : _order!.isDelivered
+                          ? 'You can raise a dispute within 7 days of delivery if there are any issues.'
+                          : 'You can raise a dispute if there are any issues with your order.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                    height: 1.4,
+                  ),
                 ),
               ],
             ),
@@ -376,47 +520,35 @@ Future<void> _showLeaveReviewDialog() async {
     );
   }
 
-  Widget _buildCancelButton() {
-    return SizedBox(
-      width: double.infinity,
-      height: 52,
-      child: OutlinedButton(
-        onPressed: _isCancelling ? null : _cancelOrder,
-        style: OutlinedButton.styleFrom(
-          side: BorderSide(color: Colors.red, width: 2),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        child: _isCancelling
-            ? SizedBox(
-                height: 20,
-                width: 20,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.red),
-                ),
-              )
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.cancel_outlined, color: Colors.red, size: 20),
-                  SizedBox(width: 8),
-                  Text(
-                    'Cancel Order',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.red,
-                    ),
-                  ),
-                ],
-              ),
-      ),
-    );
+  Color _getDisputeStatusColor() {
+    switch (_existingDispute?.status) {
+      case 'open':
+        return Colors.orange;
+      case 'under_review':
+        return Colors.blue;
+      case 'resolved':
+        return Colors.green;
+      case 'closed':
+        return Colors.grey;
+      default:
+        return Colors.grey;
+    }
   }
 
-  // ... Rest of the widget methods remain the same ...
+  IconData _getDisputeStatusIcon() {
+    switch (_existingDispute?.status) {
+      case 'open':
+        return Icons.report_problem;
+      case 'under_review':
+        return Icons.search;
+      case 'resolved':
+        return Icons.check_circle;
+      case 'closed':
+        return Icons.cancel;
+      default:
+        return Icons.help;
+    }
+  }
 
   Widget _buildErrorState() {
     return Center(
@@ -525,159 +657,158 @@ Future<void> _showLeaveReviewDialog() async {
     }
   }
 
- Widget _buildOrderInfoCard() {
-  return Container(
-    padding: EdgeInsets.all(16),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.05),
-          blurRadius: 10,
-          offset: Offset(0, 2),
-        ),
-      ],
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _buildInfoRow('Order Number', _order!.orderNumber, Icons.receipt_long, copyable: true),
-        Divider(height: 20),
-        _buildInfoRow('Order Date', _formatDate(_order!.createdAt), Icons.calendar_today),
-        Divider(height: 20),
-        _buildInfoRow('Payment Method', _getPaymentMethodText(), Icons.payment),
-        
-        // Only show payment status if NOT a cancelled POD order
-        if (!(_order!.isCancelled && _order!.isPayOnDelivery)) ...[
-          Divider(height: 20),
-          _buildInfoRow('Payment Status', _order!.paymentStatusDisplayText, Icons.account_balance_wallet,
-              color: _order!.isPaymentCompleted ? Colors.green : Colors.orange),
-        ],
-      ],
-    ),
-  );
-}
-
-String _getPaymentMethodText() {
-  switch (_order!.paymentMethod) {
-    case 'full':
-      return 'Full Payment';
-    case 'half':
-      return 'Half Payment';
-    case 'pod':
-      return 'Pay on Delivery';
-    default:
-      return _order!.paymentMethod;
-  }
-}
-
- Widget _buildProductCard() {
-  return Container(
-    padding: EdgeInsets.all(16),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      boxShadow: [
-        BoxShadow(
-          color: Colors.black.withOpacity(0.05),
-          blurRadius: 10,
-          offset: Offset(0, 2),
-        ),
-      ],
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Product Details',
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.bold,
-            color: Colors.black87,
+  Widget _buildOrderInfoCard() {
+    return Container(
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: Offset(0, 2),
           ),
-        ),
-        SizedBox(height: 16),
-        Row(
-          children: [
-            if (_order!.productImageUrl != null)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.network(
-                  _order!.productImageUrl!,
-                  width: 70,
-                  height: 70,
-                  fit: BoxFit.cover,
-                  errorBuilder: (context, error, stackTrace) => Container(
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildInfoRow('Order Number', _order!.orderNumber, Icons.receipt_long, copyable: true),
+          Divider(height: 20),
+          _buildInfoRow('Order Date', _formatDate(_order!.createdAt), Icons.calendar_today),
+          Divider(height: 20),
+          _buildInfoRow('Payment Method', _getPaymentMethodText(), Icons.payment),
+          
+          // Only show payment status if NOT a cancelled POD order
+          if (!(_order!.isCancelled && _order!.isPayOnDelivery)) ...[
+            Divider(height: 20),
+            _buildInfoRow('Payment Status', _order!.paymentStatusDisplayText, Icons.account_balance_wallet,
+                color: _order!.isPaymentCompleted ? Colors.green : Colors.orange),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _getPaymentMethodText() {
+    switch (_order!.paymentMethod) {
+      case 'full':
+        return 'Full Payment';
+      case 'half':
+        return 'Half Payment';
+      case 'pod':
+        return 'Pay on Delivery';
+      default:
+        return _order!.paymentMethod;
+    }
+  }
+
+  Widget _buildProductCard() {
+    return Container(
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Product Details',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
+            ),
+          ),
+          SizedBox(height: 16),
+          Row(
+            children: [
+              if (_order!.productImageUrl != null)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(
+                    _order!.productImageUrl!,
                     width: 70,
                     height: 70,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) => Container(
+                      width: 70,
+                      height: 70,
+                      color: Colors.grey[200],
+                      child: Icon(Icons.image, color: Colors.grey),
+                    ),
+                  ),
+                )
+              else
+                Container(
+                  width: 70,
+                  height: 70,
+                  decoration: BoxDecoration(
                     color: Colors.grey[200],
-                    child: Icon(Icons.image, color: Colors.grey),
+                    borderRadius: BorderRadius.circular(8),
                   ),
+                  child: Icon(Icons.image, color: Colors.grey),
                 ),
-              )
-            else
-              Container(
-                width: 70,
-                height: 70,
-                decoration: BoxDecoration(
-                  color: Colors.grey[200],
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Icon(Icons.image, color: Colors.grey),
-              ),
-            SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _order!.productName ?? 'Product',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
+              SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _order!.productName ?? 'Product',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    'Qty: ${_order!.quantity}',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                  ),
-                  // ADD THESE LINES:
-                  if (_order!.selectedSize != null) ...[
                     SizedBox(height: 4),
                     Text(
-                      'Size: ${_order!.selectedSize}',
+                      'Qty: ${_order!.quantity}',
                       style: TextStyle(fontSize: 12, color: Colors.grey[600]),
                     ),
-                  ],
-                  if (_order!.selectedColor != null) ...[
+                    if (_order!.selectedSize != null) ...[
+                      SizedBox(height: 4),
+                      Text(
+                        'Size: ${_order!.selectedSize}',
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      ),
+                    ],
+                    if (_order!.selectedColor != null) ...[
+                      SizedBox(height: 4),
+                      Text(
+                        'Color: ${_order!.selectedColor}',
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      ),
+                    ],
                     SizedBox(height: 4),
                     Text(
-                      'Color: ${_order!.selectedColor}',
-                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      _order!.formattedTotal,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFFFF6B35),
+                      ),
                     ),
                   ],
-                  SizedBox(height: 4),
-                  Text(
-                    _order!.formattedTotal,
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFFFF6B35),
-                    ),
-                  ),
-                ],
+                ),
               ),
-            ),
-          ],
-        ),
-      ],
-    ),
-  );
-}
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _buildDeliveryCard() {
     return Container(
@@ -895,11 +1026,10 @@ String _getPaymentMethodText() {
     )}';
   }
 
-
   String _formatDate(DateTime date) {
-  final format = DateFormat('E, d MMM yyyy');
-  return format.format(date);
-}
+    final format = DateFormat('E, d MMM yyyy');
+    return format.format(date);
+  }
 
   Widget _buildReviewSection() {
     if (_isLoadingReview) {

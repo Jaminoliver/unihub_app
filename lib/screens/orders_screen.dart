@@ -7,9 +7,16 @@ import '../services/auth_service.dart';
 import '../widgets/unihub_loading_widget.dart';
 import 'order_details_screen.dart';
 
+// Theme constants matching profile screen
+const kOrangeGradient = LinearGradient(
+  colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)],
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+);
+
 class OrdersScreen extends StatefulWidget {
   final int initialTab;
-  final VoidCallback? onRefresh; // Add this to trigger refresh from nav bar
+  final VoidCallback? onRefresh;
   
   const OrdersScreen({
     super.key,
@@ -31,7 +38,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
   bool _isLoading = true;
 
   @override
-  bool get wantKeepAlive => true; // Keep state alive
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
@@ -47,7 +54,6 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
   @override
   void didUpdateWidget(OrdersScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Refresh when widget is updated (e.g., when nav bar button is tapped)
     if (widget.onRefresh != oldWidget.onRefresh) {
       _loadOrders();
     }
@@ -74,20 +80,17 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
       
       if (mounted) {
         setState(() {
-          // Active orders: pending, confirmed, shipped
           _activeOrders = orders
               .where((o) => !['delivered', 'cancelled', 'refunded'].contains(o.orderStatus))
               .toList();
           
-          // History orders: delivered, cancelled, refunded
-          // Sort by updated_at (most recently changed first), fallback to created_at
           _completedOrders = orders
               .where((o) => ['delivered', 'cancelled', 'refunded'].contains(o.orderStatus))
               .toList()
             ..sort((a, b) {
               final aDate = a.updatedAt ?? a.createdAt;
               final bDate = b.updatedAt ?? b.createdAt;
-              return bDate.compareTo(aDate); // Most recent first
+              return bDate.compareTo(aDate);
             });
           
           _isLoading = false;
@@ -105,7 +108,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
-    super.build(context); // Required for AutomaticKeepAliveClientMixin
+    super.build(context);
     
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -113,8 +116,25 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
         backgroundColor: Colors.white,
         elevation: 0,
         automaticallyImplyLeading: false,
-        title: Text('Orders', style: AppTextStyles.heading.copyWith(fontSize: 16)),
+        title: ShaderMask(
+          shaderCallback: (bounds) => kOrangeGradient.createShader(bounds),
+          child: const Text(
+            'Orders',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              letterSpacing: -0.3,
+            ),
+          ),
+        ),
         centerTitle: false,
+        shape: Border(
+          bottom: BorderSide(
+            color: Colors.grey.shade200,
+            width: 1,
+          ),
+        ),
         bottom: TabBar(
           controller: _tabController,
           labelColor: Color(0xFFFF6B35),
@@ -179,7 +199,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
   Widget _buildOrdersList(List<OrderModel> orders, bool isActive) {
     if (orders.isEmpty) {
       return ListView(
-        physics: AlwaysScrollableScrollPhysics(), // Allow pull to refresh on empty list
+        physics: AlwaysScrollableScrollPhysics(),
         children: [
           SizedBox(height: MediaQuery.of(context).size.height * 0.3),
           Center(
@@ -215,7 +235,7 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
     }
 
     return ListView.builder(
-      physics: AlwaysScrollableScrollPhysics(), // Enable pull to refresh
+      physics: AlwaysScrollableScrollPhysics(),
       padding: EdgeInsets.all(16),
       itemCount: orders.length,
       itemBuilder: (context, index) => _buildOrderCard(orders[index]),

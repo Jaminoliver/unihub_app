@@ -10,6 +10,12 @@ import '../screens/checkout_address_screen.dart';
 import '../screens/product_details_screen.dart';
 import '../widgets/unihub_loading_widget.dart';
 
+const kOrangeGradient = LinearGradient(
+  colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)],
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+);
+
 class CartScreen extends StatefulWidget {
   final ValueNotifier<bool>? clearCartNotifier;
   const CartScreen({super.key, this.clearCartNotifier});
@@ -336,20 +342,32 @@ class CartScreenState extends State<CartScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        automaticallyImplyLeading: false,
-        title: Text('Cart', style: AppTextStyles.heading.copyWith(fontSize: 16)),
-        centerTitle: false,
-        actions: _cartItems.isNotEmpty
-            ? [
-                IconButton(
-                  icon: Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 22),
-                  onPressed: clearCart,
-                ),
-              ]
-            : null,
+  backgroundColor: Colors.white,
+  elevation: 0,
+  automaticallyImplyLeading: false,
+  title: ShaderMask(
+    shaderCallback: (bounds) => kOrangeGradient.createShader(bounds),
+    child: const Text(
+      'Cart',
+      style: TextStyle(
+        color: Colors.white,
+        fontSize: 20,
+        fontWeight: FontWeight.bold,
+        letterSpacing: -0.3,
       ),
+    ),
+  ),
+  centerTitle: false,
+  actions: _cartItems.isNotEmpty
+      ? [
+          IconButton(
+            icon: Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 22),
+            onPressed: clearCart,
+          ),
+        ]
+      : null,
+),
+
       body: RefreshIndicator(
         onRefresh: loadCartItems,
         color: Color(0xFFFF6B35),

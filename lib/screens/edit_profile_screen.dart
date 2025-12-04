@@ -1,24 +1,20 @@
 import 'dart:io';
-import 'package:flutter/material.dart'; // <-- FIX for 'Color' errors
+import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/profile_service.dart';
 import '../models/user_model.dart';
 
-class AppTheme {
-  static const orangeStart = Color(0xFFFF6B35);
-  static const orangeEnd = Color(0xFFFF8C42);
-  static const navyBlue = Color(0xFF1E3A8A);
-  static const white = Colors.white;
-  static const ashGray = Color(0xFFF5F5F7);
-  static const textDark = Color(0xFF1F2937);
-  static const textLight = Color(0xFF6B7280);
-  
-  static final gradient = LinearGradient(
-    colors: [orangeStart, orangeEnd],
-    begin: Alignment.topLeft,
-    end: Alignment.bottomRight,
-  );
-}
+// Theme matching home screen
+const kOrangeGradient = LinearGradient(
+  colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)],
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+);
+const kNavyBlue = Color(0xFF1E3A8A);
+const kTextLight = Color(0xFF6B7280);
+const kTextDark = Color(0xFF1F2937);
+const kAshGray = Color(0xFFF5F5F7);
+const kWhite = Colors.white;
 
 class EditProfileScreen extends StatefulWidget {
   final UserModel user;
@@ -37,42 +33,34 @@ class EditProfileScreen extends StatefulWidget {
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final ProfileService _profileService = ProfileService();
   final _formKey = GlobalKey<FormState>();
-  
+
   late TextEditingController _nameController;
   late TextEditingController _phoneController;
-  
-  // Delivery address controllers
   late TextEditingController _addressLineController;
   late TextEditingController _cityController;
   late TextEditingController _deliveryStateController;
   late TextEditingController _landmarkController;
   late TextEditingController _deliveryPhoneController;
-  
+
   File? _imageFile;
   String? _imageUrl;
   bool _isLoading = false;
-
-  // --- NEW STATE FOR DROPDOWNS ---
   bool _isStatesLoading = true;
   bool _isUniversitiesLoading = false;
   List<String> _states = [];
   List<Map<String, dynamic>> _universities = [];
   String? _selectedState;
   String? _selectedUniversityId;
-  // --- END NEW STATE ---
 
   @override
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.user.fullName);
-    _phoneController = TextEditingController(text: widget.user.phoneNumber); // Fixed typo here just in case
+    _phoneController = TextEditingController(text: widget.user.phoneNumber);
     _imageUrl = widget.user.profileImageUrl;
-
-    // Set initial dropdown values from user
     _selectedState = widget.user.state;
     _selectedUniversityId = widget.user.universityId;
-    
-    // Initialize delivery address fields
+
     _addressLineController = TextEditingController(
       text: widget.deliveryAddress?['address_line'],
     );
@@ -89,7 +77,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       text: widget.deliveryAddress?['phone_number'],
     );
 
-    // Load initial data for dropdowns
     _loadStates();
   }
 
@@ -97,7 +84,6 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   void dispose() {
     _nameController.dispose();
     _phoneController.dispose();
-    // _stateController is removed
     _addressLineController.dispose();
     _cityController.dispose();
     _deliveryStateController.dispose();
@@ -106,103 +92,86 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
-  // --- MODIFIED DATA LOADING METHOD ---
   Future<void> _loadStates() async {
     setState(() => _isStatesLoading = true);
     try {
       final states = await _profileService.getStates();
       String? correctlyCasedState;
-      
+
       if (widget.user.state != null) {
         try {
           correctlyCasedState = states.firstWhere(
-            (stateInList) => stateInList.toLowerCase() == widget.user.state!.toLowerCase(),
+            (stateInList) =>
+                stateInList.toLowerCase() == widget.user.state!.toLowerCase(),
           );
         } catch (e) {
           correctlyCasedState = null;
         }
       }
 
-      // If a state is now selected, load its universities *before* leaving this function
       if (correctlyCasedState != null) {
-          // Set state to show states are loaded and universities are *about* to load
-          if (mounted) {
-            setState(() {
-              _states = states;
-              _isStatesLoading = false;
-              _selectedState = correctlyCasedState;
-              _isUniversitiesLoading = true; // Show loading spinner
-            });
-          }
-          
-          // NOW, await the university loading
-          await _loadUniversities(correctlyCasedState, retainSelection: true);
-          
+        if (mounted) {
+          setState(() {
+            _states = states;
+            _isStatesLoading = false;
+            _selectedState = correctlyCasedState;
+            _isUniversitiesLoading = true;
+          });
+        }
+        await _loadUniversities(correctlyCasedState, retainSelection: true);
       } else {
-          // No state selected, just set states and finish
-          if(mounted) {
-            setState(() {
-              _states = states;
-              _isStatesLoading = false;
-              _selectedState = null;
-              _isUniversitiesLoading = false;
-            });
-          }
+        if (mounted) {
+          setState(() {
+            _states = states;
+            _isStatesLoading = false;
+            _selectedState = null;
+            _isUniversitiesLoading = false;
+          });
+        }
       }
-
     } catch (e) {
       if (mounted) {
         setState(() {
-           _isStatesLoading = false;
-           _isUniversitiesLoading = false; // Stop all loading on error
+          _isStatesLoading = false;
+          _isUniversitiesLoading = false;
         });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading states: $e')),
-        );
+        _showSnackBar('Error loading states: $e', isError: true);
       }
     }
   }
 
-  // This is the one and only _loadUniversities method
-  Future<void> _loadUniversities(String stateName, {bool retainSelection = false}) async {
-    // We no longer set loading state here, _loadStates does it
-    
+  Future<void> _loadUniversities(String stateName,
+      {bool retainSelection = false}) async {
     try {
-      final universities = await _profileService.getUniversitiesByState(stateName);
-      
+      final universities =
+          await _profileService.getUniversitiesByState(stateName);
+
       String? finalUniversityId;
-      
-      // If we are retaining selection, check if the ID is valid
+
       if (retainSelection && _selectedUniversityId != null) {
         if (universities.any((uni) => uni['id'] == _selectedUniversityId)) {
-          // The ID is valid and exists in the list
           finalUniversityId = _selectedUniversityId;
         } else {
-          // The user's saved ID is not in the list for this state
           finalUniversityId = null;
         }
       } else {
-        finalUniversityId = null; // Not retaining, so clear it
+        finalUniversityId = null;
       }
 
       if (mounted) {
         setState(() {
           _universities = universities;
-          _isUniversitiesLoading = false; // Done loading
-          _selectedUniversityId = finalUniversityId; // Set the final, validated ID
+          _isUniversitiesLoading = false;
+          _selectedUniversityId = finalUniversityId;
         });
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isUniversitiesLoading = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading universities: $e')),
-        );
+        _showSnackBar('Error loading universities: $e', isError: true);
       }
     }
   }
-  
-  // --- DUPLICATE _loadUniversities HAS BEEN REMOVED ---
 
   Future<void> _pickImage() async {
     final picker = ImagePicker();
@@ -214,58 +183,44 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
 
     if (pickedFile != null) {
-      setState(() {
-        _imageFile = File(pickedFile.path);
-      });
+      setState(() => _imageFile = File(pickedFile.path));
     }
   }
 
   Future<void> _saveProfile() async {
     if (!_formKey.currentState!.validate()) return;
-    
-    // --- ADDED VALIDATION FOR DROPDOWNS ---
+
     if (_selectedState == null || _selectedUniversityId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Please select your state and university'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showSnackBar('Please select your state and university', isError: true);
       return;
     }
-    // --- END VALIDATION ---
 
     setState(() => _isLoading = true);
 
     try {
       String? newImageUrl = _imageUrl;
 
-      // Upload new image if selected
       if (_imageFile != null) {
         if (_imageUrl != null) {
           await _profileService.deleteProfileImage(_imageUrl!);
         }
-        
         newImageUrl = await _profileService.uploadProfileImage(
           userId: widget.user.id,
           imageFile: _imageFile!,
         );
       }
 
-      // --- MODIFIED updateProfile CALL ---
       await _profileService.updateProfile(
         userId: widget.user.id,
         fullName: _nameController.text.trim(),
-        phoneNumber: _phoneController.text.trim().isEmpty 
-            ? null 
+        phoneNumber: _phoneController.text.trim().isEmpty
+            ? null
             : _phoneController.text.trim(),
-        state: _selectedState, // <-- CHANGED
-        universityId: _selectedUniversityId, // <-- ADDED
+        state: _selectedState,
+        universityId: _selectedUniversityId,
         profileImageUrl: newImageUrl,
       );
-      // --- END MODIFICATION ---
 
-      // Update delivery address if any field is filled
       if (_addressLineController.text.trim().isNotEmpty ||
           _cityController.text.trim().isNotEmpty ||
           _deliveryStateController.text.trim().isNotEmpty) {
@@ -274,46 +229,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           addressLine: _addressLineController.text.trim(),
           city: _cityController.text.trim(),
           state: _deliveryStateController.text.trim(),
-          landmark: _landmarkController.text.trim().isEmpty 
-              ? null 
+          landmark: _landmarkController.text.trim().isEmpty
+              ? null
               : _landmarkController.text.trim(),
           phoneNumber: _deliveryPhoneController.text.trim(),
         );
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                Icon(Icons.check_circle, color: Colors.white),
-                SizedBox(width: 12),
-                Text('Profile updated successfully'),
-              ],
-            ),
-            backgroundColor: Color(0xFF10B981),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        );
+        _showSnackBar('Profile updated successfully', isError: false);
         Navigator.pop(context, true);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                Icon(Icons.error_outline, color: Colors.white),
-                SizedBox(width: 12),
-                Expanded(child: Text('Error: ${e.toString()}')),
-              ],
-            ),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        );
+        _showSnackBar('Error: ${e.toString()}', isError: true);
       }
     } finally {
       if (mounted) {
@@ -322,49 +251,72 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
+  void _showSnackBar(String message, {required bool isError}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isError ? Icons.error_outline : Icons.check_circle,
+              color: kWhite,
+            ),
+            const SizedBox(width: 12),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: isError ? Colors.red : const Color(0xFF10B981),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    );
+  }
+
   String _getInitials(String name) {
     final parts = name.trim().split(' ');
     if (parts.length >= 2) {
       return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
-    } else if (parts.isNotEmpty) {
-      return parts[0][0].toUpperCase();
     }
-    return 'U';
+    return parts.isNotEmpty ? parts[0][0].toUpperCase() : 'U';
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.ashGray,
+      backgroundColor: kAshGray,
       appBar: AppBar(
-        backgroundColor: AppTheme.white,
+        backgroundColor: kWhite,
         elevation: 0,
         leading: IconButton(
           icon: ShaderMask(
-            shaderCallback: (bounds) => AppTheme.gradient.createShader(bounds),
-            child: Icon(Icons.arrow_back_ios_new, color: Colors.white),
+            shaderCallback: (bounds) => kOrangeGradient.createShader(bounds),
+            child: const Icon(Icons.arrow_back_ios_new, color: kWhite),
           ),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(
-          'Edit Profile',
-          style: TextStyle(
-            color: AppTheme.navyBlue,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            letterSpacing: -0.3,
+        title: ShaderMask(
+          shaderCallback: (bounds) => kOrangeGradient.createShader(bounds),
+          child: const Text(
+            'Edit Profile',
+            style: TextStyle(
+              color: kWhite,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              letterSpacing: -0.3,
+            ),
           ),
         ),
         actions: [
           if (_isLoading)
             Center(
               child: Container(
-                margin: EdgeInsets.only(right: 16),
+                margin: const EdgeInsets.only(right: 16),
                 width: 24,
                 height: 24,
-                child: CircularProgressIndicator(
+                child: const CircularProgressIndicator(
                   strokeWidth: 2.5,
-                  valueColor: AlwaysStoppedAnimation(AppTheme.orangeStart),
+                  valueColor: AlwaysStoppedAnimation(Color(0xFFFF6B35)),
                 ),
               ),
             )
@@ -372,14 +324,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             TextButton(
               onPressed: _saveProfile,
               style: TextButton.styleFrom(
-                padding: EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
               ),
               child: ShaderMask(
-                shaderCallback: (bounds) => AppTheme.gradient.createShader(bounds),
-                child: Text(
+                shaderCallback: (bounds) =>
+                    kOrangeGradient.createShader(bounds),
+                child: const Text(
                   'Save',
                   style: TextStyle(
-                    color: Colors.white,
+                    color: kWhite,
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
@@ -393,15 +346,15 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         child: SingleChildScrollView(
           child: Column(
             children: [
-              SizedBox(height: 12),
+              const SizedBox(height: 12),
               _buildProfileImageSection(),
-              SizedBox(height: 20),
+              const SizedBox(height: 16),
               _buildPersonalInfoSection(),
-              SizedBox(height: 12),
+              const SizedBox(height: 12),
               _buildDeliveryAddressSection(),
-              SizedBox(height: 12),
+              const SizedBox(height: 12),
               _buildReadOnlyEmailSection(),
-              SizedBox(height: 40),
+              const SizedBox(height: 40),
             ],
           ),
         ),
@@ -411,11 +364,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Widget _buildProfileImageSection() {
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 12),
-      padding: EdgeInsets.all(20),
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: AppTheme.white,
-        borderRadius: BorderRadius.circular(20),
+        color: kWhite,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         children: [
@@ -425,18 +385,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 width: 110,
                 height: 110,
                 decoration: BoxDecoration(
-                  gradient: AppTheme.gradient,
-                  borderRadius: BorderRadius.circular(24),
+                  gradient: kOrangeGradient,
+                  borderRadius: BorderRadius.circular(22),
                   boxShadow: [
                     BoxShadow(
-                      color: AppTheme.orangeStart.withOpacity(0.3),
+                      color: const Color(0xFFFF6B35).withOpacity(0.3),
                       blurRadius: 16,
-                      offset: Offset(0, 6),
+                      offset: const Offset(0, 6),
                     ),
                   ],
                 ),
                 child: ClipRRect(
-                  borderRadius: BorderRadius.circular(24),
+                  borderRadius: BorderRadius.circular(22),
                   child: _imageFile != null
                       ? Image.file(_imageFile!, fit: BoxFit.cover)
                       : _imageUrl != null
@@ -447,8 +407,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                                 return Center(
                                   child: Text(
                                     _getInitials(widget.user.fullName),
-                                    style: TextStyle(
-                                      color: Colors.white,
+                                    style: const TextStyle(
+                                      color: kWhite,
                                       fontSize: 40,
                                       fontWeight: FontWeight.bold,
                                     ),
@@ -459,8 +419,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                           : Center(
                               child: Text(
                                 _getInitials(widget.user.fullName),
-                                style: TextStyle(
-                                  color: Colors.white,
+                                style: const TextStyle(
+                                  color: kWhite,
                                   fontSize: 40,
                                   fontWeight: FontWeight.bold,
                                 ),
@@ -474,30 +434,31 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 child: GestureDetector(
                   onTap: _pickImage,
                   child: Container(
-                    padding: EdgeInsets.all(10),
+                    padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      gradient: AppTheme.gradient,
+                      gradient: kOrangeGradient,
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: AppTheme.orangeStart.withOpacity(0.3),
+                          color: const Color(0xFFFF6B35).withOpacity(0.3),
                           blurRadius: 12,
                         ),
                       ],
                     ),
-                    child: Icon(Icons.camera_alt, color: Colors.white, size: 20),
+                    child: const Icon(
+                      Icons.camera_alt,
+                      color: kWhite,
+                      size: 20,
+                    ),
                   ),
                 ),
               ),
             ],
           ),
-          SizedBox(height: 12),
-          Text(
+          const SizedBox(height: 12),
+          const Text(
             'Tap camera icon to change photo',
-            style: TextStyle(
-              color: AppTheme.textLight,
-              fontSize: 12,
-            ),
+            style: TextStyle(color: kTextLight, fontSize: 12),
           ),
         ],
       ),
@@ -506,11 +467,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Widget _buildPersonalInfoSection() {
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 12),
-      padding: EdgeInsets.all(16),
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.white,
-        borderRadius: BorderRadius.circular(20),
+        color: kWhite,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -518,22 +486,26 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           Row(
             children: [
               ShaderMask(
-                shaderCallback: (bounds) => AppTheme.gradient.createShader(bounds),
-                child: Icon(Icons.person_outline, size: 18, color: Colors.white),
+                shaderCallback: (bounds) =>
+                    kOrangeGradient.createShader(bounds),
+                child: const Icon(
+                  Icons.person_outline,
+                  size: 16,
+                  color: kWhite,
+                ),
               ),
-              SizedBox(width: 8),
-              Text(
+              const SizedBox(width: 8),
+              const Text(
                 'Personal Information',
                 style: TextStyle(
-                  fontSize: 15,
+                  fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: AppTheme.navyBlue,
+                  color: kTextDark,
                 ),
               ),
             ],
           ),
-          SizedBox(height: 16),
-          
+          const SizedBox(height: 16),
           _buildTextField(
             controller: _nameController,
             label: 'Full Name',
@@ -545,9 +517,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               return null;
             },
           ),
-          
-          SizedBox(height: 16),
-          
+          const SizedBox(height: 14),
           _buildTextField(
             controller: _phoneController,
             label: 'Phone Number',
@@ -562,10 +532,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               return null;
             },
           ),
-          
-          SizedBox(height: 16),
-          
-          // --- NEW STATE DROPDOWN ---
+          const SizedBox(height: 14),
           _buildDropdown(
             label: 'State',
             icon: Icons.map_outlined,
@@ -575,17 +542,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
             items: _states.map((String state) {
               return DropdownMenuItem<String>(
                 value: state,
-                child: Text(state),
+                child: Text(state, style: const TextStyle(fontSize: 14)),
               );
             }).toList(),
             onChanged: (String? newValue) {
               if (newValue != null && newValue != _selectedState) {
                 setState(() {
                   _selectedState = newValue;
-                  _universities = []; // Clear old universities
-                  _selectedUniversityId = null; // Clear old selection
+                  _universities = [];
+                  _selectedUniversityId = null;
+                  _isUniversitiesLoading = true;
                 });
-                // Load universities for the new state
                 _loadUniversities(newValue);
               }
             },
@@ -594,38 +561,33 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               return null;
             },
           ),
-          // --- END STATE DROPDOWN ---
-
-          SizedBox(height: 16),
-          
-          // --- NEW UNIVERSITY DROPDOWN ---
+          const SizedBox(height: 14),
           _buildDropdown(
             label: 'University',
             icon: Icons.school_outlined,
             value: _selectedUniversityId,
             isLoading: _isUniversitiesLoading,
-            // Disable if no state is selected or if universities are loading
             isEnabled: _selectedState != null && !_isUniversitiesLoading,
-            hint: _selectedState == null 
-                ? 'Select a state first' 
+            hint: _selectedState == null
+                ? 'Select a state first'
                 : 'Select your university',
             items: _universities.map((Map<String, dynamic> university) {
               return DropdownMenuItem<String>(
                 value: university['id'] as String,
-                child: Text(university['name'] as String),
+                child: Text(
+                  university['name'] as String,
+                  style: const TextStyle(fontSize: 14),
+                ),
               );
             }).toList(),
             onChanged: (String? newValue) {
-              setState(() {
-                _selectedUniversityId = newValue;
-              });
+              setState(() => _selectedUniversityId = newValue);
             },
             validator: (value) {
               if (value == null) return 'Please select a university';
               return null;
             },
           ),
-          // --- END UNIVERSITY DROPDOWN ---
         ],
       ),
     );
@@ -633,11 +595,18 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Widget _buildDeliveryAddressSection() {
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 12),
-      padding: EdgeInsets.all(16),
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.white,
-        borderRadius: BorderRadius.circular(20),
+        color: kWhite,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -645,22 +614,26 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           Row(
             children: [
               ShaderMask(
-                shaderCallback: (bounds) => AppTheme.gradient.createShader(bounds),
-                child: Icon(Icons.location_on_outlined, size: 18, color: Colors.white),
+                shaderCallback: (bounds) =>
+                    kOrangeGradient.createShader(bounds),
+                child: const Icon(
+                  Icons.location_on_outlined,
+                  size: 16,
+                  color: kWhite,
+                ),
               ),
-              SizedBox(width: 8),
-              Text(
+              const SizedBox(width: 8),
+              const Text(
                 'Delivery Information',
                 style: TextStyle(
-                  fontSize: 15,
+                  fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: AppTheme.navyBlue,
+                  color: kTextDark,
                 ),
               ),
             ],
           ),
-          SizedBox(height: 16),
-          
+          const SizedBox(height: 16),
           _buildTextField(
             controller: _addressLineController,
             label: 'Address Line',
@@ -673,9 +646,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               return null;
             },
           ),
-          
-          SizedBox(height: 16),
-          
+          const SizedBox(height: 14),
           Row(
             children: [
               Expanded(
@@ -691,7 +662,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   },
                 ),
               ),
-              SizedBox(width: 12),
+              const SizedBox(width: 12),
               Expanded(
                 child: _buildTextField(
                   controller: _deliveryStateController,
@@ -707,20 +678,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               ),
             ],
           ),
-          
-          SizedBox(height: 16),
-          
+          const SizedBox(height: 14),
           _buildTextField(
             controller: _landmarkController,
             label: 'Landmark (Optional)',
             icon: Icons.place_outlined,
-            validator: (value) { // Added missing validator from your previous logic
-              return null; // It's optional, so always valid
-            },
+            validator: (value) => null,
           ),
-          
-          SizedBox(height: 16),
-          
+          const SizedBox(height: 14),
           _buildTextField(
             controller: _deliveryPhoneController,
             label: 'Delivery Phone',
@@ -743,46 +708,55 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
   Widget _buildReadOnlyEmailSection() {
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 12),
-      padding: EdgeInsets.all(16),
+      margin: const EdgeInsets.symmetric(horizontal: 12),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: AppTheme.white,
-        borderRadius: BorderRadius.circular(20),
+        color: kWhite,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
         children: [
           Container(
-            padding: EdgeInsets.all(10),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.grey.shade300, Colors.grey.shade200],
-              ),
+              color: Colors.grey.shade200,
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(Icons.email_outlined, color: Colors.grey.shade700, size: 20),
+            child: Icon(
+              Icons.email_outlined,
+              color: Colors.grey.shade700,
+              size: 20,
+            ),
           ),
-          SizedBox(width: 12),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                const Text(
                   'Email Address',
-                  style: TextStyle(fontSize: 11, color: AppTheme.textLight),
+                  style: TextStyle(fontSize: 11, color: kTextLight),
                 ),
-                SizedBox(height: 2),
+                const SizedBox(height: 2),
                 Text(
                   widget.user.email,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: AppTheme.textDark,
+                    color: kTextDark,
                   ),
                 ),
               ],
             ),
           ),
-          Icon(Icons.lock_outline, color: AppTheme.textLight, size: 18),
+          const Icon(Icons.lock_outline, color: kTextLight, size: 18),
         ],
       ),
     );
@@ -801,13 +775,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       keyboardType: keyboardType,
       maxLines: maxLines,
       validator: validator,
-      style: TextStyle(fontSize: 14),
+      style: const TextStyle(fontSize: 14),
       decoration: InputDecoration(
         labelText: label,
-        labelStyle: TextStyle(color: AppTheme.textLight, fontSize: 13),
+        labelStyle: const TextStyle(color: kTextLight, fontSize: 13),
         prefixIcon: ShaderMask(
-          shaderCallback: (bounds) => AppTheme.gradient.createShader(bounds),
-          child: Icon(icon, color: Colors.white, size: 20),
+          shaderCallback: (bounds) => kOrangeGradient.createShader(bounds),
+          child: Icon(icon, color: kWhite, size: 20),
         ),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -819,24 +793,24 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppTheme.orangeStart, width: 2),
+          borderSide: const BorderSide(color: Color(0xFFFF6B35), width: 2),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.red),
+          borderSide: const BorderSide(color: Colors.red),
         ),
         focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.red, width: 2),
+          borderSide: const BorderSide(color: Colors.red, width: 2),
         ),
         filled: true,
-        fillColor: AppTheme.ashGray,
-        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        fillColor: kAshGray,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
     );
   }
 
-  // --- NEW WIDGET FOR DROPDOWNS ---
   Widget _buildDropdown({
     required String label,
     required IconData icon,
@@ -854,27 +828,27 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       onChanged: isEnabled ? onChanged : null,
       validator: validator,
       isExpanded: true,
-      style: TextStyle(fontSize: 14, color: AppTheme.textDark),
+      style: const TextStyle(fontSize: 14, color: kTextDark),
       decoration: InputDecoration(
         labelText: label,
         labelStyle: TextStyle(
-          color: isEnabled ? AppTheme.textLight : Colors.grey,
+          color: isEnabled ? kTextLight : Colors.grey,
           fontSize: 13,
         ),
         hintText: hint,
-        hintStyle: TextStyle(color: Colors.grey, fontSize: 14),
+        hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
         prefixIcon: ShaderMask(
-          shaderCallback: (bounds) => AppTheme.gradient.createShader(bounds),
-          child: Icon(icon, color: Colors.white, size: 20),
+          shaderCallback: (bounds) => kOrangeGradient.createShader(bounds),
+          child: Icon(icon, color: kWhite, size: 20),
         ),
         suffixIcon: isLoading
             ? Container(
-                padding: EdgeInsets.all(16),
+                padding: const EdgeInsets.all(16),
                 width: 20,
                 height: 20,
-                child: CircularProgressIndicator(
+                child: const CircularProgressIndicator(
                   strokeWidth: 2,
-                  color: AppTheme.orangeStart,
+                  color: Color(0xFFFF6B35),
                 ),
               )
             : null,
@@ -888,19 +862,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: AppTheme.orangeStart, width: 2),
+          borderSide: const BorderSide(color: Color(0xFFFF6B35), width: 2),
         ),
         errorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.red),
+          borderSide: const BorderSide(color: Colors.red),
         ),
         focusedErrorBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.red, width: 2),
+          borderSide: const BorderSide(color: Colors.red, width: 2),
         ),
         filled: true,
-        fillColor: isEnabled ? AppTheme.ashGray : Colors.grey.shade200,
-        contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        fillColor: isEnabled ? kAshGray : Colors.grey.shade200,
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       ),
     );
   }

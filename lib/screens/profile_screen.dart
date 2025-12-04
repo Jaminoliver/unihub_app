@@ -5,12 +5,17 @@ import '../models/user_model.dart';
 import 'edit_profile_screen.dart';
 import '../widgets/unihub_loading_widget.dart';
 
-// Simplified theme constants
-const kOrangeGradient = LinearGradient(colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)]);
+// Theme matching home screen
+const kOrangeGradient = LinearGradient(
+  colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)],
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+);
 const kNavyBlue = Color(0xFF1E3A8A);
 const kTextLight = Color(0xFF6B7280);
 const kTextDark = Color(0xFF1F2937);
 const kAshGray = Color(0xFFF5F5F7);
+const kWhite = Colors.white;
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -19,7 +24,8 @@ class ProfileScreen extends StatefulWidget {
   State<ProfileScreen> createState() => _ProfileScreenState();
 }
 
-class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProviderStateMixin {
+class _ProfileScreenState extends State<ProfileScreen>
+    with SingleTickerProviderStateMixin {
   final AuthService _authService = AuthService();
   final ProfileService _profileService = ProfileService();
 
@@ -28,12 +34,12 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   bool _isLoading = true;
   String? _errorMessage;
 
-  late AnimationController _logoutAnimationController;
+  late AnimationController _animationController;
 
   @override
   void initState() {
     super.initState();
-    _logoutAnimationController = AnimationController(
+    _animationController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 600),
     );
@@ -42,7 +48,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
 
   @override
   void dispose() {
-    _logoutAnimationController.dispose();
+    _animationController.dispose();
     super.dispose();
   }
 
@@ -54,10 +60,8 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
 
     try {
       final user = await _profileService.getCurrentUserProfile();
-      
       if (user != null) {
         final address = await _profileService.getDefaultDeliveryAddress(user.id);
-        
         if (mounted) {
           setState(() {
             _currentUser = user;
@@ -66,12 +70,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           });
         }
       } else {
-        if (mounted) {
-          setState(() {
-            _currentUser = null;
-            _isLoading = false;
-          });
-        }
+        if (mounted) setState(() => _isLoading = false);
       }
     } catch (e) {
       if (mounted) {
@@ -87,7 +86,6 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     try {
       await _showLogoutAnimation();
       await _authService.signOut();
-
       if (mounted) {
         Navigator.of(context).pushNamedAndRemoveUntil(
           '/account_type',
@@ -100,17 +98,18 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           SnackBar(
             content: Row(
               children: [
-                const Icon(Icons.error_outline, color: Colors.white),
+                const Icon(Icons.error_outline, color: kWhite),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Text('Logout failed: ${e.toString()}', 
-                    style: const TextStyle(fontWeight: FontWeight.w500)),
+                  child: Text('Logout failed: ${e.toString()}'),
                 ),
               ],
             ),
             backgroundColor: const Color(0xFFDC2626),
             behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
           ),
         );
       }
@@ -121,13 +120,12 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     await showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => _LogoutDialog(controller: _logoutAnimationController),
+      builder: (context) => _LogoutDialog(controller: _animationController),
     );
   }
 
   Future<void> _navigateToEditProfile() async {
     if (_currentUser == null) return;
-
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
@@ -137,25 +135,19 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         ),
       ),
     );
-
-    if (result == true) {
-      _loadUserProfile();
-    }
+    if (result == true) _loadUserProfile();
   }
 
   String _getInitials(String name) {
     final parts = name.trim().split(' ');
     if (parts.length >= 2) {
       return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
-    } else if (parts.isNotEmpty) {
-      return parts[0][0].toUpperCase();
     }
-    return 'U';
+    return parts.isNotEmpty ? parts[0][0].toUpperCase() : 'U';
   }
 
   String _formatAddress() {
     if (_deliveryAddress == null) return 'Not provided';
-    
     final parts = <String>[];
     if (_deliveryAddress!['address_line'] != null) {
       parts.add(_deliveryAddress!['address_line']);
@@ -166,237 +158,271 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     if (_deliveryAddress!['state'] != null) {
       parts.add(_deliveryAddress!['state']);
     }
-    
     return parts.isEmpty ? 'Not provided' : parts.join(', ');
+  }
+
+  void _showEnlargedPhoto(UserModel user) {
+    Navigator.of(context).push(
+      PageRouteBuilder(
+        opaque: false,
+        barrierColor: Colors.black87,
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return FadeTransition(
+            opacity: animation,
+            child: _EnlargedPhotoView(
+              user: user,
+              onChangePhoto: () {
+                Navigator.pop(context);
+                _navigateToEditProfile();
+              },
+              getInitials: _getInitials,
+            ),
+          );
+        },
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return _buildLoadingScreen();
-    if (_errorMessage != null) return _buildErrorScreen();
-    if (_currentUser == null) return _buildNotLoggedInScreen();
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: kAshGray,
+        body: Center(
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            child: const UniHubLoader(size: 80),
+          ),
+        ),
+      );
+    }
+
+    if (_errorMessage != null) {
+      return Scaffold(
+        backgroundColor: kAshGray,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.error_outline,
+                    size: 64,
+                    color: Colors.red,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Error Loading Profile',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: kNavyBlue,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _errorMessage ?? 'Unknown error',
+                  style: const TextStyle(color: kTextLight, fontSize: 14),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                _GradientButton(
+                  text: 'Retry',
+                  icon: Icons.refresh,
+                  onPressed: _loadUserProfile,
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (_currentUser == null) {
+      return Scaffold(
+        backgroundColor: kAshGray,
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: const BoxDecoration(
+                    gradient: kOrangeGradient,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.person_outline,
+                    size: 64,
+                    color: kWhite,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Not Logged In',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: kNavyBlue,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Please log in to view your profile',
+                  style: TextStyle(color: kTextLight, fontSize: 14),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                _GradientButton(
+                  text: 'Log In',
+                  icon: Icons.login,
+                  onPressed: () {
+                    Navigator.of(context).pushNamedAndRemoveUntil(
+                      '/account_type',
+                      (route) => false,
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     return Scaffold(
       backgroundColor: kAshGray,
+      appBar: AppBar(
+        backgroundColor: kWhite,
+        elevation: 0,
+        title: ShaderMask(
+          shaderCallback: (bounds) => kOrangeGradient.createShader(bounds),
+          child: const Text(
+            'Profile',
+            style: TextStyle(
+              color: kWhite,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              letterSpacing: -0.3,
+            ),
+          ),
+        ),
+        actions: [
+          IconButton(
+            icon: ShaderMask(
+              shaderCallback: (bounds) => kOrangeGradient.createShader(bounds),
+              child: const Icon(Icons.edit_outlined, color: kWhite),
+            ),
+            onPressed: _navigateToEditProfile,
+          ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: _loadUserProfile,
         color: const Color(0xFFFF6B35),
-        child: CustomScrollView(
-          slivers: [
-            _buildAppBar(),
-            SliverToBoxAdapter(
-              child: Column(
-                children: [
-                  _buildProfileHeader(),
-                  const SizedBox(height: 16),
-                  _buildContactSection(),
-                  const SizedBox(height: 12),
-                  _buildSettingsSection(),
-                  const SizedBox(height: 12),
-                  _buildAccountTypeCard(),
-                  const SizedBox(height: 12),
-                  _buildLogoutButton(),
-                  const SizedBox(height: 16),
-                  _buildAppVersion(),
-                  const SizedBox(height: 80),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildLoadingScreen() {
-    return Scaffold(
-      backgroundColor: kAshGray,
-      body: Center(
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          child: const UniHubLoader(size: 80),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildErrorScreen() {
-    return Scaffold(
-      backgroundColor: kAshGray,
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.error_outline, size: 64, color: Colors.red),
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                'Error Loading Profile',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: kNavyBlue,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                _errorMessage ?? 'Unknown error',
-                style: const TextStyle(color: kTextLight, fontSize: 14),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 24),
-              _GradientButton(
-                text: 'Retry',
-                icon: Icons.refresh,
-                onPressed: _loadUserProfile,
-              ),
+              const SizedBox(height: 12),
+              _buildProfileHeader(),
+              const SizedBox(height: 12),
+              _buildContactSection(),
+              const SizedBox(height: 12),
+              _buildSettingsSection(),
+              if (!_currentUser!.isSeller) ...[
+                const SizedBox(height: 12),
+                _buildAccountTypeCard(),
+              ],
+              const SizedBox(height: 12),
+              _buildLogoutButton(),
+              const SizedBox(height: 16),
+              _buildAppVersion(),
+              const SizedBox(height: 80),
             ],
           ),
         ),
       ),
-    );
-  }
-
-  Widget _buildNotLoggedInScreen() {
-    return Scaffold(
-      backgroundColor: kAshGray,
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: const BoxDecoration(
-                  gradient: kOrangeGradient,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.person_outline, size: 64, color: Colors.white),
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                'Not Logged In',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: kNavyBlue,
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Please log in to view your profile',
-                style: TextStyle(color: kTextLight, fontSize: 14),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 24),
-              _GradientButton(
-                text: 'Log In',
-                icon: Icons.login,
-                onPressed: () {
-                  Navigator.of(context).pushNamedAndRemoveUntil(
-                    '/account_type',
-                    (route) => false,
-                  );
-                },
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAppBar() {
-    return SliverAppBar(
-      pinned: true,
-      elevation: 0,
-      backgroundColor: Colors.white,
-      expandedHeight: 0,
-      toolbarHeight: 56,
-      automaticallyImplyLeading: false,
-      title: const Text(
-        'Profile',
-        style: TextStyle(
-          color: kNavyBlue,
-          fontSize: 20,
-          fontWeight: FontWeight.bold,
-          letterSpacing: -0.3,
-        ),
-      ),
-      actions: [
-        _CircleButton(
-          icon: Icons.edit_outlined,
-          onPressed: _navigateToEditProfile,
-        ),
-        const SizedBox(width: 8),
-      ],
     );
   }
 
   Widget _buildProfileHeader() {
     final user = _currentUser!;
-    
     return Container(
-      margin: const EdgeInsets.all(12),
+      margin: const EdgeInsets.symmetric(horizontal: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        color: kWhite,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Row(
         children: [
-          Container(
-            width: 70,
-            height: 70,
-            decoration: BoxDecoration(
-              gradient: kOrangeGradient,
-              borderRadius: BorderRadius.circular(18),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFFFF6B35).withOpacity(0.3),
-                  blurRadius: 12,
-                  offset: const Offset(0, 4),
+          GestureDetector(
+            onTap: () => _showEnlargedPhoto(user),
+            child: Hero(
+              tag: 'profile_photo_${user.id}',
+              child: Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  gradient: kOrangeGradient,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFFF6B35).withOpacity(0.3),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(18),
-              child: user.profileImageUrl != null
-                  ? Image.network(
-                      user.profileImageUrl!,
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) {
-                        return Center(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(16),
+                  child: user.profileImageUrl != null
+                      ? Image.network(
+                          user.profileImageUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Center(
+                              child: Text(
+                                _getInitials(user.fullName),
+                                style: const TextStyle(
+                                  color: kWhite,
+                                  fontSize: 24,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            );
+                          },
+                        )
+                      : Center(
                           child: Text(
                             _getInitials(user.fullName),
                             style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 28,
+                              color: kWhite,
+                              fontSize: 24,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                        );
-                      },
-                    )
-                  : Center(
-                      child: Text(
-                        _getInitials(user.fullName),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
                         ),
-                      ),
-                    ),
+                ),
+              ),
             ),
           ),
           const SizedBox(width: 16),
@@ -410,9 +436,9 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                       child: Text(
                         user.fullName,
                         style: const TextStyle(
-                          fontSize: 18,
+                          fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: kNavyBlue,
+                          color: kTextDark,
                           letterSpacing: -0.3,
                         ),
                         overflow: TextOverflow.ellipsis,
@@ -420,23 +446,28 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                     ),
                     if (user.isVerified) ...[
                       const SizedBox(width: 6),
-                      const Icon(Icons.verified, color: Color(0xFF10B981), size: 18),
+                      const Icon(
+                        Icons.verified,
+                        color: Color(0xFF10B981),
+                        size: 16,
+                      ),
                     ],
                   ],
                 ),
                 const SizedBox(height: 4),
                 Text(
                   user.email,
-                  style: const TextStyle(
-                    color: kTextLight,
-                    fontSize: 13,
-                  ),
+                  style: const TextStyle(color: kTextLight, fontSize: 12),
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 4),
                 Row(
                   children: [
-                    const Icon(Icons.location_on_outlined, color: kTextLight, size: 13),
+                    const Icon(
+                      Icons.location_on,
+                      color: Color(0xFFFF6B35),
+                      size: 12,
+                    ),
                     const SizedBox(width: 4),
                     Flexible(
                       child: Text(
@@ -458,13 +489,20 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
   Widget _buildContactSection() {
     final user = _currentUser!;
     final addressPhone = _deliveryAddress?['phone_number'];
-    
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        color: kWhite,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -472,44 +510,46 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           Row(
             children: [
               ShaderMask(
-                shaderCallback: (bounds) => kOrangeGradient.createShader(bounds),
-                child: const Icon(Icons.contact_phone_outlined, size: 18, color: Colors.white),
+                shaderCallback: (bounds) =>
+                    kOrangeGradient.createShader(bounds),
+                child: const Icon(
+                  Icons.contact_phone_outlined,
+                  size: 16,
+                  color: kWhite,
+                ),
               ),
               const SizedBox(width: 8),
               const Text(
                 'Contact Information',
                 style: TextStyle(
-                  fontSize: 15,
+                  fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: kNavyBlue,
+                  color: kTextDark,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          _InfoTile(
+          const SizedBox(height: 14),
+          _InfoRow(
             icon: Icons.phone_outlined,
-            iconColor: Colors.green,
-            iconBgColor: Colors.green.shade50,
-            title: 'Phone Number',
-            subtitle: user.phoneNumber ?? 'Not provided',
+            label: 'Phone',
+            value: user.phoneNumber ?? 'Not provided',
+            color: const Color(0xFF10B981),
           ),
-          const SizedBox(height: 12),
-          _InfoTile(
+          const SizedBox(height: 10),
+          _InfoRow(
             icon: Icons.location_on_outlined,
-            iconColor: Colors.blue,
-            iconBgColor: Colors.blue.shade50,
-            title: 'Delivery Address',
-            subtitle: _formatAddress(),
+            label: 'Address',
+            value: _formatAddress(),
+            color: const Color(0xFF3B82F6),
           ),
           if (addressPhone != null) ...[
-            const SizedBox(height: 12),
-            _InfoTile(
+            const SizedBox(height: 10),
+            _InfoRow(
               icon: Icons.phone_in_talk_outlined,
-              iconColor: Colors.orange,
-              iconBgColor: Colors.orange.shade50,
-              title: 'Delivery Phone',
-              subtitle: addressPhone,
+              label: 'Delivery Phone',
+              value: addressPhone,
+              color: const Color(0xFFFF6B35),
             ),
           ],
         ],
@@ -522,8 +562,15 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       margin: const EdgeInsets.symmetric(horizontal: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        color: kWhite,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -531,98 +578,100 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
           Row(
             children: [
               ShaderMask(
-                shaderCallback: (bounds) => kOrangeGradient.createShader(bounds),
-                child: const Icon(Icons.settings_outlined, size: 18, color: Colors.white),
+                shaderCallback: (bounds) =>
+                    kOrangeGradient.createShader(bounds),
+                child: const Icon(
+                  Icons.settings_outlined,
+                  size: 16,
+                  color: kWhite,
+                ),
               ),
               const SizedBox(width: 8),
               const Text(
                 'Settings',
                 style: TextStyle(
-                  fontSize: 15,
+                  fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: kNavyBlue,
+                  color: kTextDark,
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           _SettingsTile(
             icon: Icons.notifications_outlined,
-            iconColor: Colors.amber,
-            iconBgColor: Colors.amber.shade50,
             title: 'Notifications',
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: const Text('Coming soon!'),
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              );
-            },
+            color: const Color(0xFFF59E0B),
+            onTap: () => _showComingSoon(),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           _SettingsTile(
             icon: Icons.shield_outlined,
-            iconColor: Colors.purple,
-            iconBgColor: Colors.purple.shade50,
             title: 'Safety & Privacy',
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: const Text('Coming soon!'),
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              );
-            },
+            color: const Color(0xFF8B5CF6),
+            onTap: () => _showComingSoon(),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8),
           _SettingsTile(
             icon: Icons.help_outline,
-            iconColor: Colors.teal,
-            iconBgColor: Colors.teal.shade50,
             title: 'Help & Support',
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: const Text('Coming soon!'),
-                  behavior: SnackBarBehavior.floating,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
-              );
-            },
+            color: const Color(0xFF10B981),
+            onTap: () => _showComingSoon(),
           ),
         ],
       ),
     );
   }
 
+  void _showComingSoon() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Row(
+          children: [
+            Icon(Icons.info_outline, color: kWhite),
+            SizedBox(width: 12),
+            Text('Coming soon!'),
+          ],
+        ),
+        backgroundColor: const Color(0xFFFF6B35),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    );
+  }
+
   Widget _buildAccountTypeCard() {
     final user = _currentUser!;
-    
-    if (user.isSeller) return const SizedBox.shrink();
-    
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [Colors.blue.shade50, Colors.blue.shade100],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+          colors: [
+            const Color(0xFF3B82F6).withOpacity(0.1),
+            const Color(0xFF3B82F6).withOpacity(0.05),
+          ],
         ),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFF3B82F6).withOpacity(0.3),
+        ),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(12),
             decoration: const BoxDecoration(
-              color: Colors.white,
+              color: kWhite,
               shape: BoxShape.circle,
             ),
-            child: const Icon(Icons.shopping_bag, color: Colors.blue, size: 24),
+            child: const Icon(
+              Icons.shopping_bag,
+              color: Color(0xFF3B82F6),
+              size: 22,
+            ),
           ),
           const SizedBox(width: 16),
           Expanded(
@@ -632,18 +681,15 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
                 const Text(
                   'Buyer Account',
                   style: TextStyle(
-                    fontSize: 15,
+                    fontSize: 14,
                     fontWeight: FontWeight.bold,
-                    color: kNavyBlue,
+                    color: kTextDark,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   'Browse and buy products from sellers at ${user.universityName ?? 'your university'}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: kTextLight,
-                  ),
+                  style: const TextStyle(fontSize: 11, color: kTextLight),
                 ),
               ],
             ),
@@ -658,13 +704,20 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
       margin: const EdgeInsets.symmetric(horizontal: 12),
       child: InkWell(
         onTap: () => _showLogoutDialog(context),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(14),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
+            color: kWhite,
+            borderRadius: BorderRadius.circular(14),
             border: Border.all(color: Colors.red.shade200, width: 1.5),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
           child: const Row(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -700,10 +753,7 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         SizedBox(height: 4),
         Text(
           'Making campus commerce easier and safer',
-          style: TextStyle(
-            fontSize: 11,
-            color: kTextLight,
-          ),
+          style: TextStyle(fontSize: 11, color: kTextLight),
         ),
       ],
     );
@@ -713,7 +763,9 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
         title: Row(
           children: [
             Container(
@@ -735,14 +787,23 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel', style: TextStyle(color: kTextLight)),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: kTextLight),
+            ),
           ),
           TextButton(
             onPressed: () {
               Navigator.pop(context);
               _handleLogout();
             },
-            child: const Text('Log Out', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+            child: const Text(
+              'Log Out',
+              style: TextStyle(
+                color: Colors.red,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ),
         ],
       ),
@@ -751,64 +812,31 @@ class _ProfileScreenState extends State<ProfileScreen> with SingleTickerProvider
 }
 
 // Reusable Widgets
-class _CircleButton extends StatelessWidget {
+class _InfoRow extends StatelessWidget {
   final IconData icon;
-  final VoidCallback onPressed;
+  final String label;
+  final String value;
+  final Color color;
 
-  const _CircleButton({required this.icon, required this.onPressed});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.all(8),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: IconButton(
-        icon: ShaderMask(
-          shaderCallback: (bounds) => kOrangeGradient.createShader(bounds),
-          child: Icon(icon, color: Colors.white, size: 20),
-        ),
-        onPressed: onPressed,
-      ),
-    );
-  }
-}
-
-class _InfoTile extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final Color iconBgColor;
-  final String title;
-  final String subtitle;
-
-  const _InfoTile({
+  const _InfoRow({
     required this.icon,
-    required this.iconColor,
-    required this.iconBgColor,
-    required this.title,
-    required this.subtitle,
+    required this.label,
+    required this.value,
+    required this.color,
   });
 
   @override
   Widget build(BuildContext context) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Container(
-          padding: const EdgeInsets.all(10),
+          padding: const EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: iconBgColor,
-            borderRadius: BorderRadius.circular(12),
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(10),
           ),
-          child: Icon(icon, color: iconColor, size: 20),
+          child: Icon(icon, color: color, size: 16),
         ),
         const SizedBox(width: 12),
         Expanded(
@@ -816,12 +844,12 @@ class _InfoTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                title,
-                style: const TextStyle(fontSize: 11, color: kTextLight),
+                label,
+                style: const TextStyle(fontSize: 10, color: kTextLight),
               ),
               const SizedBox(height: 2),
               Text(
-                subtitle,
+                value,
                 style: const TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
@@ -838,16 +866,14 @@ class _InfoTile extends StatelessWidget {
 
 class _SettingsTile extends StatelessWidget {
   final IconData icon;
-  final Color iconColor;
-  final Color iconBgColor;
   final String title;
+  final Color color;
   final VoidCallback onTap;
 
   const _SettingsTile({
     required this.icon,
-    required this.iconColor,
-    required this.iconBgColor,
     required this.title,
+    required this.color,
     required this.onTap,
   });
 
@@ -855,29 +881,29 @@ class _SettingsTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: kAshGray,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(12),
         ),
         child: Row(
           children: [
             Container(
-              padding: const EdgeInsets.all(10),
+              padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: iconBgColor,
-                borderRadius: BorderRadius.circular(12),
+                color: color.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(10),
               ),
-              child: Icon(icon, color: iconColor, size: 20),
+              child: Icon(icon, color: color, size: 16),
             ),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 title,
                 style: const TextStyle(
-                  fontSize: 14,
+                  fontSize: 13,
                   fontWeight: FontWeight.w600,
                   color: kTextDark,
                 ),
@@ -885,7 +911,7 @@ class _SettingsTile extends StatelessWidget {
             ),
             ShaderMask(
               shaderCallback: (bounds) => kOrangeGradient.createShader(bounds),
-              child: const Icon(Icons.chevron_right, color: Colors.white, size: 20),
+              child: const Icon(Icons.chevron_right, color: kWhite, size: 18),
             ),
           ],
         ),
@@ -928,13 +954,15 @@ class _GradientButton extends StatelessWidget {
         style: ElevatedButton.styleFrom(
           backgroundColor: Colors.transparent,
           shadowColor: Colors.transparent,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             if (icon != null) ...[
-              Icon(icon, size: 20, color: Colors.white),
+              Icon(icon, size: 20, color: kWhite),
               const SizedBox(width: 8),
             ],
             Text(
@@ -942,7 +970,7 @@ class _GradientButton extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.bold,
-                color: Colors.white,
+                color: kWhite,
                 letterSpacing: 0.2,
               ),
             ),
@@ -953,7 +981,7 @@ class _GradientButton extends StatelessWidget {
   }
 }
 
-// Logout Animation Dialog
+// Logout Animation Dialog (reused from signup)
 class _LogoutDialog extends StatefulWidget {
   final AnimationController controller;
 
@@ -980,7 +1008,7 @@ class _LogoutDialogState extends State<_LogoutDialog> {
       child: Container(
         padding: const EdgeInsets.all(32),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: kWhite,
           borderRadius: BorderRadius.circular(24),
         ),
         child: Column(
@@ -1000,7 +1028,7 @@ class _LogoutDialogState extends State<_LogoutDialog> {
                 ),
                 child: const Icon(
                   Icons.waving_hand,
-                  color: Colors.white,
+                  color: kWhite,
                   size: 48,
                 ),
               ),
@@ -1015,23 +1043,259 @@ class _LogoutDialogState extends State<_LogoutDialog> {
                     style: TextStyle(
                       fontSize: 24,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFF1A1A1A),
+                      color: kTextDark,
                     ),
                   ),
                   SizedBox(height: 8),
                   Text(
                     'See you soon!',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: kTextLight,
-                    ),
+                    style: TextStyle(fontSize: 14, color: kTextLight),
                   ),
                 ],
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// Enlarged Photo View
+class _EnlargedPhotoView extends StatelessWidget {
+  final UserModel user;
+  final VoidCallback onChangePhoto;
+  final String Function(String) getInitials;
+
+  const _EnlargedPhotoView({
+    required this.user,
+    required this.onChangePhoto,
+    required this.getInitials,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Stack(
+        children: [
+          // Dismiss on tap outside
+          GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: Container(
+              color: Colors.transparent,
+            ),
+          ),
+          // Centered photo
+          Center(
+            child: Hero(
+              tag: 'profile_photo_${user.id}',
+              child: Container(
+                width: MediaQuery.of(context).size.width * 0.85,
+                height: MediaQuery.of(context).size.width * 0.85,
+                decoration: BoxDecoration(
+                  gradient: kOrangeGradient,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFFFF6B35).withOpacity(0.4),
+                      blurRadius: 24,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(24),
+                  child: user.profileImageUrl != null
+                      ? Image.network(
+                          user.profileImageUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return Center(
+                              child: Text(
+                                getInitials(user.fullName),
+                                style: const TextStyle(
+                                  color: kWhite,
+                                  fontSize: 80,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            );
+                          },
+                        )
+                      : Center(
+                          child: Text(
+                            getInitials(user.fullName),
+                            style: const TextStyle(
+                              color: kWhite,
+                              fontSize: 80,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                ),
+              ),
+            ),
+          ),
+          // Top controls
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 16,
+            left: 16,
+            right: 16,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Back button
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: kWhite.withOpacity(0.9),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: ShaderMask(
+                      shaderCallback: (bounds) =>
+                          kOrangeGradient.createShader(bounds),
+                      child: const Icon(
+                        Icons.arrow_back,
+                        color: kWhite,
+                        size: 24,
+                      ),
+                    ),
+                  ),
+                ),
+                // Change photo button
+                GestureDetector(
+                  onTap: onChangePhoto,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: kOrangeGradient,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: const Color(0xFFFF6B35).withOpacity(0.4),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: const [
+                        Icon(Icons.camera_alt, color: kWhite, size: 18),
+                        SizedBox(width: 8),
+                        Text(
+                          'Change Photo',
+                          style: TextStyle(
+                            color: kWhite,
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Bottom user info
+          Positioned(
+            bottom: 40,
+            left: 24,
+            right: 24,
+            child: Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: kWhite.withOpacity(0.95),
+                borderRadius: BorderRadius.circular(20),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.1),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Flexible(
+                        child: Text(
+                          user.fullName,
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: kTextDark,
+                          ),
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      if (user.isVerified) ...[
+                        const SizedBox(width: 8),
+                        const Icon(
+                          Icons.verified,
+                          color: Color(0xFF10B981),
+                          size: 20,
+                        ),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    user.email,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: kTextLight,
+                    ),
+                    textAlign: TextAlign.center,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(
+                        Icons.location_on,
+                        color: Color(0xFFFF6B35),
+                        size: 14,
+                      ),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          '${user.state ?? 'Unknown'} • ${user.universityName ?? 'Unknown University'}',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: kTextLight,
+                          ),
+                          textAlign: TextAlign.center,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

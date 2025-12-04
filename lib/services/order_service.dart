@@ -26,6 +26,11 @@ class OrderService {
   }) async {
     try {
       final double escrowAmount = _paymentService.calculateEscrowAmount(totalAmount, paymentMethod);
+      
+      // Calculate commission (5% for online payments only)
+      final double commissionRate = 0.05; // 5%
+      final double commissionAmount = paymentMethod != 'pod' ? totalAmount * commissionRate : 0.0;
+      final double sellerPayoutAmount = paymentMethod != 'pod' ? totalAmount - commissionAmount : 0.0;
 
       final response = await _supabase
         .from('orders')
@@ -45,6 +50,8 @@ class OrderService {
           'notes': notes,
           'created_at': DateTime.now().toIso8601String(),
           'escrow_amount': escrowAmount,
+          'commission_amount': commissionAmount,
+          'seller_payout_amount': sellerPayoutAmount,
           'selected_color': selectedColor,
           'selected_size': selectedSize,
         })
@@ -60,6 +67,38 @@ class OrderService {
       final newOrder = OrderModel.fromJson(response);
       final productName = newOrder.productName ?? 'your item';
 
+      // CREATE TRANSACTION RECORD FOR ONLINE PAYMENTS (full or half payment)
+      if (paymentMethod != 'pod' && paymentReference != null) {
+        try {
+          await _supabase.from('transactions').insert({
+            'user_id': buyerId,
+            'order_id': newOrder.id,
+            'transaction_type': 'payment',
+            'amount': totalAmount,
+            'status': 'success',
+            'payment_provider': 'paystack',
+            'payment_reference': paymentReference,
+            'metadata': {
+              'product_id': productId,
+              'product_name': productName,
+              'quantity': quantity,
+              'seller_id': sellerId,
+              'order_number': newOrder.orderNumber,
+              'payment_method': paymentMethod,
+              'escrow_amount': escrowAmount,
+              'commission_amount': commissionAmount,
+            },
+            'created_at': DateTime.now().toIso8601String(),
+          });
+
+          print('✅ Payment transaction created for order ${newOrder.orderNumber}');
+        } catch (txnError) {
+          print('⚠️ Warning: Failed to create transaction record: $txnError');
+          // Don't throw - order was created successfully
+        }
+      }
+
+      // Send notifications
       await _notificationService.createNotification(
         userId: buyerId,
         type: NotificationType.orderPlaced,

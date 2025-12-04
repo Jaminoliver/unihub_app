@@ -48,7 +48,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   List<ProductModel> _featuredProducts = [];
   List<ProductModel> _lowestPriceProducts = [];
   List<UniversityModel> _universities = [];
-  List<CategoryModel> _categories = [];
   
   bool _isLoadingData = true;
   bool _isLoadingProducts = true;
@@ -68,7 +67,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     _scrollController = widget.scrollController ?? ScrollController();
     _startFlashSaleTimer();
     _initializeData();
-    // Load viewer counts after initial data loads (non-blocking)
     Future.delayed(Duration(milliseconds: 500), () {
       if (mounted) _startViewCountUpdates();
     });
@@ -90,51 +88,48 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     });
   }
 
-void _startViewCountUpdates() {
-  _loadViewerCounts();
-  _viewCountTimer = Timer.periodic(Duration(seconds: 60), (_) {  // Changed from 20 to 60
-    if (mounted) _loadViewerCounts();
-  });
-}
+  void _startViewCountUpdates() {
+    _loadViewerCounts();
+    _viewCountTimer = Timer.periodic(Duration(seconds: 60), (_) {
+      if (mounted) _loadViewerCounts();
+    });
+  }
 
   Future<void> _loadViewerCounts() async {
-  try {
-    final counts = <String, int>{};
+    try {
+      final counts = <String, int>{};
       
-      // Load viewer counts in batches to avoid blocking
       final allProductIds = [
         ..._featuredProducts.map((p) => p.id),
         ..._allProducts.map((p) => p.id),
         ..._lowestPriceProducts.map((p) => p.id),
       ].toSet().toList();
       
-      // Load counts for each product (with timeout)
       await Future.wait(
-      allProductIds.map((id) async {
-        try {
-          final count = await _viewService.getTotalViews(id).timeout(  // Changed from getActiveViewers to getTotalViews
-            Duration(seconds: 2),
-            onTimeout: () => 0,
-          );
-          counts[id] = count;
-        } catch (e) {
-          counts[id] = 0;
-        }
-      }),
-    );
+        allProductIds.map((id) async {
+          try {
+            final count = await _viewService.getTotalViews(id).timeout(
+              Duration(seconds: 2),
+              onTimeout: () => 0,
+            );
+            counts[id] = count;
+          } catch (e) {
+            counts[id] = 0;
+          }
+        }),
+      );
       
-       if (mounted) setState(() => _viewerCounts = counts);
-  } catch (e) {
-    debugPrint('Error loading viewer counts: $e');
+      if (mounted) setState(() => _viewerCounts = counts);
+    } catch (e) {
+      debugPrint('Error loading viewer counts: $e');
+    }
   }
-}
 
   Future<void> _initializeData() async {
     setState(() => _isLoadingData = true);
     try {
       await Future.wait([
         _loadUniversities(), 
-        _loadCategories(), 
         _loadWishlistIds(),
       ]);
       await _refreshProductData();
@@ -167,16 +162,6 @@ void _startViewCountUpdates() {
     }
   }
 
-  Future<void> _loadCategories() async {
-    try {
-      final categories = await _categoryService.getAllCategories();
-      if (mounted) setState(() { _categories = categories; _categoriesError = false; });
-    } catch (e) {
-      debugPrint('Error loading categories: $e');
-      if (mounted) setState(() => _categoriesError = true);
-    }
-  }
-
   Future<void> _loadWishlistIds() async {
     try {
       final userId = _authService.currentUserId;
@@ -198,7 +183,6 @@ void _startViewCountUpdates() {
         _loadFeaturedProducts(),
         _loadLowestPriceProducts(),
       ]);
-      // Load viewer counts in background (non-blocking)
       _loadViewerCounts();
     } catch (e) {
       debugPrint('Error refreshing product data: $e');
@@ -216,36 +200,17 @@ void _startViewCountUpdates() {
     }
   }
 
-Future<void> _loadFeaturedProducts() async {
-  try {
-    final products = await _productService.getTrendingProducts(
-      universityId: _selectedUniversityId, 
-      limit: 50  // Get more products to sort
-    );
-    
-    // Load view counts for all products
-    final productsWithViews = await Future.wait(
-      products.map((product) async {
-        final views = await _viewService.getTotalViews(product.id).timeout(
-          Duration(seconds: 2),
-          onTimeout: () => 0,
-        );
-        return {'product': product, 'views': views};
-      }),
-    );
-    
-    // Sort by highest views and take top 12
-    productsWithViews.sort((a, b) => (b['views'] as int).compareTo(a['views'] as int));
-    final topProducts = productsWithViews
-        .take(12)
-        .map((item) => item['product'] as ProductModel)
-        .toList();
-    
-    if (mounted) setState(() => _featuredProducts = topProducts);
-  } catch (e) {
-    debugPrint('Error loading featured products: $e');
+  Future<void> _loadFeaturedProducts() async {
+    try {
+      final products = await _productService.getTrendingProducts(
+        universityId: _selectedUniversityId, 
+        limit: 12
+      );
+      if (mounted) setState(() => _featuredProducts = products);
+    } catch (e) {
+      debugPrint('Error loading featured products: $e');
+    }
   }
-}
 
   Future<void> _loadLowestPriceProducts() async {
     try {
@@ -270,12 +235,11 @@ Future<void> _loadFeaturedProducts() async {
     await _refreshProductData();
   }
 
- Future<void> _navigateToProductDetails(ProductModel product) async {
+  Future<void> _navigateToProductDetails(ProductModel product) async {
     await Navigator.push(
       context, 
       MaterialPageRoute(builder: (context) => ProductDetailsScreen(product: product))
     );
-    // Refresh view counts when user returns from product details
     if (mounted) _loadViewerCounts();
   }
 
@@ -326,32 +290,19 @@ Future<void> _loadFeaturedProducts() async {
     }
   }
 
-  void _navigateToSpecialDeal(String dealTitle) {
-    final dealTypeMap = {
-      'Flash Sales': 'flash_sale',
-      'Discounted': 'discounted',
-      'Last Chance': 'last_chance',
-      'Under ₦10k': 'under_10k',
-      'Top Deals': 'top_deals',
-      'New This Week': 'new_this_week',
-    };
-
-    final dealType = dealTypeMap[dealTitle];
-    
-    if (dealType != null) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => SpecialDealProductsScreen(
-            dealType: dealType,
-            dealTitle: dealTitle,
-            universityId: _selectedUniversityId,
-            state: _selectedState,
-          ),
-        ),
-      );
-    }
-  }
+  void _navigateToSpecialDeal(String dealType, String dealTitle) {
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => SpecialDealProductsScreen(
+        dealType: dealType,
+        dealTitle: dealTitle,
+        universityId: _selectedUniversityId,
+        state: _selectedState,
+      ),
+    ),
+  );
+}
 
   List<ProductModel> _getFilteredProductsForTab(int tabIndex) {
     switch (tabIndex) {
@@ -388,19 +339,10 @@ Future<void> _loadFeaturedProducts() async {
               child: Column(
                 children: [
                   const SizedBox(height: 4),
-                  _isLoadingData
-                      ? CategoriesSkeleton()
-                      : _categoriesError
-                          ? CategoriesErrorState(onRetry: () async {
-                              setState(() { _isLoadingData = true; _categoriesError = false; });
-                              await _loadCategories();
-                              setState(() => _isLoadingData = false);
-                            })
-                          : CategoriesDirectory(
-                              categories: _categories,
-                              selectedUniversityId: _selectedUniversityId,
-                              selectedState: _selectedState,
-                            ),
+                  CategoriesDirectory(
+                    selectedUniversityId: _selectedUniversityId,
+                    selectedState: _selectedState,
+                  ),
                   const SizedBox(height: 4),
                   Divider(height: 1, color: Colors.grey.shade300, indent: 16, endIndent: 16),
                   const SizedBox(height: 8),
@@ -511,7 +453,6 @@ Future<void> _loadFeaturedProducts() async {
   }
 }
 
-// ============= SPECIAL DEALS GRID SKELETON =============
 class SpecialDealsGridSkeleton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
