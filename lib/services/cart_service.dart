@@ -79,28 +79,34 @@ class CartService {
     int quantity = 1,
   }) async {
     try {
-      // Check if item already exists in cart with same color/size
-      final existingItems = await _supabase
+      // Check if exact variant already exists in cart
+      final existingItemQuery = _supabase
           .from('cart')
           .select('id, quantity, selected_color, selected_size')
           .eq('user_id', userId)
           .eq('product_id', productId);
 
-      // Find matching item with same color and size
-      Map<String, dynamic>? matchingItem;
-      for (var item in existingItems) {
-        if (item['selected_color'] == selectedColor && 
-            item['selected_size'] == selectedSize) {
-          matchingItem = item;
-          break;
-        }
+      // Apply color filter
+      if (selectedColor != null) {
+        existingItemQuery.eq('selected_color', selectedColor);
+      } else {
+        existingItemQuery.isFilter('selected_color', null);
       }
 
-      if (matchingItem != null) {
+      // Apply size filter
+      if (selectedSize != null) {
+        existingItemQuery.eq('selected_size', selectedSize);
+      } else {
+        existingItemQuery.isFilter('selected_size', null);
+      }
+
+      final existingItem = await existingItemQuery.maybeSingle();
+
+      if (existingItem != null) {
         // Update existing cart item quantity
-        final newQuantity = (matchingItem['quantity'] as int) + quantity;
+        final newQuantity = (existingItem['quantity'] as int) + quantity;
         return await updateCartItemQuantity(
-          matchingItem['id'] as String,
+          existingItem['id'] as String,
           newQuantity,
         );
       }
@@ -115,6 +121,7 @@ class CartService {
             'selected_color': selectedColor,
             'selected_size': selectedSize,
             'created_at': DateTime.now().toIso8601String(),
+            'updated_at': DateTime.now().toIso8601String(),
           })
           .select('''
             *,
@@ -300,7 +307,7 @@ class CartService {
     }
   }
 
-  /// Get cart item by product ID
+  /// Get cart item by product ID (returns first match)
   Future<CartModel?> getCartItemByProduct({
     required String userId,
     required String productId,
@@ -343,6 +350,57 @@ class CartService {
     } catch (e) {
       print('Error fetching cart item: $e');
       return null;
+    }
+  }
+
+  /// Get all cart items for a specific product (useful for products with variants)
+  Future<List<CartModel>> getCartItemsByProduct({
+    required String userId,
+    required String productId,
+  }) async {
+    try {
+      final response = await _supabase
+          .from('cart')
+          .select('''
+            *,
+            products(
+              *,
+              categories(name),
+              universities(name, short_name)
+            )
+          ''')
+          .eq('user_id', userId)
+          .eq('product_id', productId);
+
+      final cartItems = (response as List).map((json) {
+        return json as Map<String, dynamic>;
+      }).toList();
+
+      // Fetch seller info for each item
+      for (var item in cartItems) {
+        if (item['products'] != null && item['products']['seller_id'] != null) {
+          try {
+            final sellerResponse = await _supabase
+                .from('sellers')
+                .select('id, business_name, user_id')
+                .eq('id', item['products']['seller_id'])
+                .maybeSingle();
+            
+            if (sellerResponse != null) {
+              item['products']['seller'] = sellerResponse;
+            }
+          } catch (e) {
+            print('Error fetching seller: $e');
+          }
+        }
+      }
+
+      return cartItems
+          .map((json) => CartModel.fromJson(json))
+          .toList();
+    } catch (e) {
+      print('Error fetching cart items by product: $e');
+      return [];
     }
   }
 }

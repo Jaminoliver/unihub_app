@@ -4,6 +4,7 @@ import '../models/dispute_model.dart';
 import '../services/dispute_service.dart';
 import '../constants/app_colors.dart';
 import 'package:intl/intl.dart';
+import 'dispute_chat_screen.dart';
 
 class DisputeDetailsScreen extends StatefulWidget {
   final String disputeId;
@@ -51,6 +52,17 @@ class _DisputeDetailsScreenState extends State<DisputeDetailsScreen> {
     );
   }
 
+  void _openChat() {
+    if (_dispute == null) return;
+    
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => DisputeChatScreen(dispute: _dispute!),
+      ),
+    ).then((_) => _loadDispute()); // Refresh when returning
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -84,6 +96,10 @@ class _DisputeDetailsScreenState extends State<DisputeDetailsScreen> {
                     children: [
                       _buildStatusCard(),
                       SizedBox(height: 16),
+                      if (!_dispute!.isResolved && !_dispute!.isClosed)
+                        _buildChatButton(),
+                      if (!_dispute!.isResolved && !_dispute!.isClosed)
+                        SizedBox(height: 16),
                       _buildDisputeInfoCard(),
                       SizedBox(height: 16),
                       _buildOrderInfoCard(),
@@ -99,6 +115,53 @@ class _DisputeDetailsScreenState extends State<DisputeDetailsScreen> {
                     ],
                   ),
                 ),
+    );
+  }
+
+  Widget _buildChatButton() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF2196F3), Color(0xFF1976D2)],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+        ),
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Color(0xFF2196F3).withOpacity(0.3),
+            blurRadius: 10,
+            offset: Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: _openChat,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.chat_bubble, color: Colors.white, size: 22),
+                SizedBox(width: 12),
+                Text(
+                  'Chat with Admin',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                SizedBox(width: 8),
+                Icon(Icons.arrow_forward, color: Colors.white, size: 20),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 

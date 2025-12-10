@@ -1,6 +1,9 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/dispute_model.dart';
+import '../models/dispute_message_model.dart';
 import 'dart:typed_data';
+import 'dart:io';
+import 'package:flutter_image_compress/flutter_image_compress.dart';
 
 class DisputeService {
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -162,6 +165,114 @@ class DisputeService {
       print('Error uploading evidence: $e');
       return null;
     }
+  }
+
+  /// Get dispute messages (buyer + admin only)
+  Future<List<DisputeMessageModel>> getDisputeMessages(String disputeId) async {
+    try {
+      final response = await _supabase
+          .from('dispute_messages')
+          .select()
+          .eq('dispute_id', disputeId)
+          .inFilter('sender_type', ['buyer', 'admin'])
+          .order('created_at', ascending: true);
+
+      return (response as List)
+          .map((json) => DisputeMessageModel.fromJson(json))
+          .toList();
+    } catch (e) {
+      print('Error fetching dispute messages: $e');
+      rethrow;
+    }
+  }
+
+  /// Send dispute message
+  Future<DisputeMessageModel> sendDisputeMessage({
+    required String disputeId,
+    required String senderId,
+    required String message,
+    List<String>? attachments,
+  }) async {
+    try {
+      final response = await _supabase
+          .from('dispute_messages')
+          .insert({
+            'dispute_id': disputeId,
+            'sender_id': senderId,
+            'sender_type': 'buyer',
+            'message': message,
+            'attachments': attachments,
+            'created_at': DateTime.now().toIso8601String(),
+          })
+          .select()
+          .single();
+
+      return DisputeMessageModel.fromJson(response);
+    } catch (e) {
+      print('Error sending dispute message: $e');
+      rethrow;
+    }
+  }
+
+  /// Compress image
+  Future<Uint8List> compressImage(File file) async {
+    try {
+      final result = await FlutterImageCompress.compressWithFile(
+        file.absolute.path,
+        minWidth: 1920,
+        minHeight: 1080,
+        quality: 85,
+      );
+      
+      return result ?? await file.readAsBytes();
+    } catch (e) {
+      print('Error compressing image: $e');
+      return await file.readAsBytes();
+    }
+  }
+
+  /// Upload dispute message attachment
+  Future<String?> uploadDisputeAttachment(
+    String disputeId,
+    File file,
+  ) async {
+    try {
+      Uint8List fileBytes;
+      
+      // Compress if image
+      if (file.path.toLowerCase().endsWith('.jpg') ||
+          file.path.toLowerCase().endsWith('.jpeg') ||
+          file.path.toLowerCase().endsWith('.png') ||
+          file.path.toLowerCase().endsWith('.webp')) {
+        fileBytes = await compressImage(file);
+      } else {
+        fileBytes = await file.readAsBytes();
+      }
+      
+      final fileName = 'order-disputes/$disputeId/${DateTime.now().millisecondsSinceEpoch}_${file.path.split('/').last}';
+      
+      await _supabase.storage
+          .from('dispute-evidence')
+          .uploadBinary(fileName, fileBytes);
+
+      final publicUrl = _supabase.storage
+          .from('dispute-evidence')
+          .getPublicUrl(fileName);
+
+      return publicUrl;
+    } catch (e) {
+      print('Error uploading dispute attachment: $e');
+      return null;
+    }
+  }
+
+  /// Subscribe to dispute messages (real-time)
+  Stream<DisputeMessageModel> subscribeToDisputeMessages(String disputeId) {
+    return _supabase
+        .from('dispute_messages')
+        .stream(primaryKey: ['id'])
+        .eq('dispute_id', disputeId)
+        .map((data) => DisputeMessageModel.fromJson(data.first));
   }
 
   /// Get available dispute reasons
