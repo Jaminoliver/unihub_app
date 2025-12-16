@@ -98,28 +98,15 @@ class OrderService {
         }
       }
 
-      // Send notifications
-      await _notificationService.createNotification(
-        userId: buyerId,
-        type: NotificationType.orderPlaced,
-        title: 'Order Placed Successfully',
-        message: '$productName - Order #${newOrder.orderNumber}',
-        orderNumber: newOrder.orderNumber,
-        orderId: newOrder.id,
-        amount: newOrder.totalAmount,
-      );
-
-      if (escrowAmount > 0) {
-        await _notificationService.createNotification(
-          userId: buyerId,
-          type: NotificationType.paymentEscrow,
-          title: 'Payment Secured',
-          message: 'Your payment of ₦${escrowAmount.toStringAsFixed(0)} for $productName is in escrow.',
-          orderNumber: newOrder.orderNumber,
-          orderId: newOrder.id,
-          amount: escrowAmount,
-        );
-      }
+      // NOTIFICATIONS REMOVED - Now handled by order-emails edge function
+      // The edge function will automatically:
+      // 1. Create "Order Placed Successfully" notification + push for buyer
+      // 2. Send "Payment Secured" push notification (if paid online)
+      // 3. Create "New Order Received" notification + push for seller
+      // 4. Send emails to both buyer and seller
+      
+      print('✅ Order created: ${newOrder.orderNumber}');
+      print('ℹ️ Notifications will be sent by edge function');
 
       return newOrder;
     } catch (e) {

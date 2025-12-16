@@ -6,10 +6,8 @@ import '../services/auth_service.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_text_styles.dart';
 import 'add_address_screen.dart';
-import 'checkout_payment_screen.dart';
+import 'checkout_review_screen.dart'; // NAVIGATE TO REVIEW NEXT
 
-/// Checkout Step 2: Select Delivery Address
-/// Allows user to select existing address or add new one
 class CheckoutAddressScreen extends StatefulWidget {
   final List<CartModel> selectedItems;
   final Map<String, String> paymentMethods;
@@ -46,7 +44,7 @@ class _CheckoutAddressScreenState extends State<CheckoutAddressScreen> {
       final user = _authService.currentUser;
       if (user == null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Please log in to continue')),
+          SnackBar(content: Text('Please log in to continue'), backgroundColor: Colors.red),
         );
         Navigator.pop(context);
         return;
@@ -55,26 +53,24 @@ class _CheckoutAddressScreenState extends State<CheckoutAddressScreen> {
       _userId = user.id;
       final addresses = await _addressService.getAddresses(user.id);
 
-      // Inside _loadAddresses()...
-    setState(() {
-      _addresses = addresses;
-      
-      if (addresses.isEmpty) {
-        _selectedAddress = null; // No address to select
-      } else {
-        _selectedAddress = addresses.firstWhere(
-          (addr) => addr.isDefault,
-          orElse: () => addresses.first, // Fallback: pick the first address
-        );
-      }
+      setState(() {
+        _addresses = addresses;
+        
+        if (addresses.isEmpty) {
+          _selectedAddress = null;
+        } else {
+          _selectedAddress = addresses.firstWhere(
+            (addr) => addr.isDefault,
+            orElse: () => addresses.first,
+          );
+        }
 
-      _isLoading = false;
-    });
-// ...
+        _isLoading = false;
+      });
     } catch (e) {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading addresses: $e')),
+        SnackBar(content: Text('Error loading addresses: $e'), backgroundColor: Colors.red),
       );
     }
   }
@@ -82,17 +78,15 @@ class _CheckoutAddressScreenState extends State<CheckoutAddressScreen> {
   Future<void> _navigateToAddAddress() async {
     final result = await Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => AddAddressScreen(),
-      ),
+      MaterialPageRoute(builder: (context) => AddAddressScreen()),
     );
 
     if (result == true) {
-      _loadAddresses(); // Reload addresses after adding new one
+      _loadAddresses();
     }
   }
 
-  void _proceedToPayment() {
+  void _proceedToReview() {
     if (_selectedAddress == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -103,10 +97,11 @@ class _CheckoutAddressScreenState extends State<CheckoutAddressScreen> {
       return;
     }
 
+    // NAVIGATE TO REVIEW SCREEN
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => CheckoutPaymentScreen(
+        builder: (context) => CheckoutReviewScreen(
           selectedItems: widget.selectedItems,
           paymentMethods: widget.paymentMethods,
           deliveryAddress: _selectedAddress!,
@@ -126,26 +121,25 @@ class _CheckoutAddressScreenState extends State<CheckoutAddressScreen> {
           icon: Icon(Icons.arrow_back, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
-        title: Text(
-          'Delivery Address',
-          style: AppTextStyles.heading.copyWith(fontSize: 18),
-        ),
+        title: Text('Delivery Address', style: AppTextStyles.heading.copyWith(fontSize: 18)),
         centerTitle: true,
       ),
       body: Column(
         children: [
-          // Progress Indicator
+          // Progress Steps
           Container(
             color: Colors.white,
             padding: EdgeInsets.symmetric(vertical: 16),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                _buildStepIndicator('1', 'Review', true, true),
-                _buildStepLine(true),
-                _buildStepIndicator('2', 'Address', true, true),
-                _buildStepLine(false),
-                _buildStepIndicator('3', 'Payment', false, false),
+                _buildStep('1', 'Cart', true, true),
+                _buildLine(true),
+                _buildStep('2', 'Address', true, true),
+                _buildLine(false),
+                _buildStep('3', 'Review', false, false),
+                _buildLine(false),
+                _buildStep('4', 'Payment', false, false),
               ],
             ),
           ),
@@ -163,46 +157,33 @@ class _CheckoutAddressScreenState extends State<CheckoutAddressScreen> {
     );
   }
 
-  Widget _buildStepIndicator(String number, String label, bool active, bool completed) {
+  Widget _buildStep(String number, String label, bool active, bool completed) {
     return Column(
       children: [
         Container(
-          width: 32,
-          height: 32,
+          width: 28,
+          height: 28,
           decoration: BoxDecoration(
             color: active || completed ? Color(0xFFFF6B35) : Colors.grey[300],
             shape: BoxShape.circle,
           ),
           child: Center(
             child: completed
-                ? Icon(Icons.check, color: Colors.white, size: 18)
-                : Text(
-                    number,
-                    style: TextStyle(
-                      color: active ? Colors.white : Colors.grey[600],
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+                ? Icon(Icons.check, color: Colors.white, size: 14)
+                : Text(number, style: TextStyle(color: active ? Colors.white : Colors.grey[600], fontWeight: FontWeight.bold, fontSize: 12)),
           ),
         ),
         SizedBox(height: 4),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            color: active ? Color(0xFFFF6B35) : Colors.grey[600],
-            fontWeight: active ? FontWeight.w600 : FontWeight.normal,
-          ),
-        ),
+        Text(label, style: TextStyle(fontSize: 10, color: active ? Color(0xFFFF6B35) : Colors.grey[600])),
       ],
     );
   }
 
-  Widget _buildStepLine(bool active) {
+  Widget _buildLine(bool active) {
     return Container(
-      width: 40,
+      width: 24,
       height: 2,
-      margin: EdgeInsets.only(bottom: 24),
+      margin: EdgeInsets.only(bottom: 20),
       color: active ? Color(0xFFFF6B35) : Colors.grey[300],
     );
   }
@@ -214,40 +195,28 @@ class _CheckoutAddressScreenState extends State<CheckoutAddressScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              Icons.location_off_outlined,
-              size: 80,
-              color: Colors.grey[400],
-            ),
-            SizedBox(height: 16),
-            Text(
-              'No Delivery Addresses',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.grey[700],
+            Container(
+              padding: EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: Color(0xFFFF6B35).withOpacity(0.1),
+                shape: BoxShape.circle,
               ),
-            ),
-            SizedBox(height: 8),
-            Text(
-              'Add a delivery address to continue',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.grey[600],
-              ),
+              child: Icon(Icons.location_off_outlined, size: 60, color: Color(0xFFFF6B35)),
             ),
             SizedBox(height: 24),
+            Text('No Delivery Addresses', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.grey[800])),
+            SizedBox(height: 8),
+            Text('Add a delivery address to continue with your order', textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: Colors.grey[600])),
+            SizedBox(height: 32),
             ElevatedButton.icon(
               onPressed: _navigateToAddAddress,
-              icon: Icon(Icons.add_location_alt),
-              label: Text('Add Address'),
+              icon: Icon(Icons.add_location_alt, size: 20),
+              label: Text('Add Delivery Address'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Color(0xFFFF6B35),
-                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
+                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 0,
               ),
             ),
           ],
@@ -260,49 +229,39 @@ class _CheckoutAddressScreenState extends State<CheckoutAddressScreen> {
     return ListView(
       padding: EdgeInsets.all(16),
       children: [
-        // Add New Address Button
         _buildAddNewButton(),
         SizedBox(height: 16),
-
-        // Existing Addresses
         ..._addresses.map((address) => _buildAddressCard(address)),
       ],
     );
   }
 
   Widget _buildAddNewButton() {
-    return GestureDetector(
+    return InkWell(
       onTap: _navigateToAddAddress,
+      borderRadius: BorderRadius.circular(12),
       child: Container(
         padding: EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Color(0xFFFF6B35), width: 2, style: BorderStyle.solid),
+          border: Border.all(color: Color(0xFFFF6B35), width: 2),
+          boxShadow: [BoxShadow(color: Color(0xFFFF6B35).withOpacity(0.1), blurRadius: 10, offset: Offset(0, 2))],
         ),
         child: Row(
           children: [
             Container(
-              padding: EdgeInsets.all(8),
+              padding: EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: Color(0xFFFF6B35).withOpacity(0.1),
+                gradient: LinearGradient(
+                  colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)],
+                ),
                 shape: BoxShape.circle,
               ),
-              child: Icon(
-                Icons.add_location_alt,
-                color: Color(0xFFFF6B35),
-                size: 24,
-              ),
+              child: Icon(Icons.add_location_alt, color: Colors.white, size: 22),
             ),
-            SizedBox(width: 12),
-            Text(
-              'Add New Address',
-              style: TextStyle(
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFFFF6B35),
-              ),
-            ),
+            SizedBox(width: 14),
+            Text('Add New Address', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Color(0xFFFF6B35))),
           ],
         ),
       ),
@@ -312,9 +271,11 @@ class _CheckoutAddressScreenState extends State<CheckoutAddressScreen> {
   Widget _buildAddressCard(DeliveryAddressModel address) {
     final isSelected = _selectedAddress?.id == address.id;
 
-    return GestureDetector(
+    return InkWell(
       onTap: () => setState(() => _selectedAddress = address),
-      child: Container(
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: Duration(milliseconds: 200),
         margin: EdgeInsets.only(bottom: 12),
         padding: EdgeInsets.all(16),
         decoration: BoxDecoration(
@@ -325,30 +286,22 @@ class _CheckoutAddressScreenState extends State<CheckoutAddressScreen> {
             width: isSelected ? 2 : 1,
           ),
           boxShadow: isSelected
-              ? [
-                  BoxShadow(
-                    color: Color(0xFFFF6B35).withOpacity(0.2),
-                    blurRadius: 10,
-                    offset: Offset(0, 4),
-                  ),
-                ]
-              : [],
+              ? [BoxShadow(color: Color(0xFFFF6B35).withOpacity(0.15), blurRadius: 12, offset: Offset(0, 4))]
+              : [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 8, offset: Offset(0, 2))],
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Radio Button
-            Container(
+            AnimatedContainer(
+              duration: Duration(milliseconds: 200),
               margin: EdgeInsets.only(top: 2),
               child: Icon(
-                isSelected ? Icons.radio_button_checked : Icons.radio_button_unchecked,
+                isSelected ? Icons.check_circle : Icons.radio_button_unchecked,
                 color: isSelected ? Color(0xFFFF6B35) : Colors.grey[400],
                 size: 24,
               ),
             ),
-            SizedBox(width: 12),
-
-            // Address Details
+            SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -358,70 +311,41 @@ class _CheckoutAddressScreenState extends State<CheckoutAddressScreen> {
                       Expanded(
                         child: Text(
                           address.addressLine,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.black87,
-                          ),
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: Colors.black87),
                         ),
                       ),
                       if (address.isDefault)
                         Container(
                           padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                           decoration: BoxDecoration(
-                            color: Colors.green[50],
+                            color: Color(0xFF10B981).withOpacity(0.1),
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          child: Text(
-                            'Default',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.green[700],
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
+                          child: Text('Default', style: TextStyle(fontSize: 10, color: Color(0xFF10B981), fontWeight: FontWeight.bold)),
                         ),
                     ],
                   ),
                   SizedBox(height: 6),
-                  Text(
-                    '${address.city}, ${address.state}',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey[700],
-                    ),
-                  ),
+                  Text('${address.city}, ${address.state}', style: TextStyle(fontSize: 13, color: Colors.grey[700])),
                   if (address.landmark != null && address.landmark!.isNotEmpty) ...[
-                    SizedBox(height: 4),
+                    SizedBox(height: 6),
                     Row(
                       children: [
-                        Icon(Icons.location_on, size: 14, color: Colors.grey[500]),
+                        Icon(Icons.near_me, size: 12, color: Color(0xFFFF6B35)),
                         SizedBox(width: 4),
                         Expanded(
-                          child: Text(
-                            'Near ${address.landmark}',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey[600],
-                            ),
-                          ),
+                          child: Text('Near ${address.landmark}', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
                         ),
                       ],
                     ),
                   ],
                   if (address.phoneNumber != null && address.phoneNumber!.isNotEmpty) ...[
-                    SizedBox(height: 4),
+                    SizedBox(height: 6),
                     Row(
                       children: [
-                        Icon(Icons.phone, size: 14, color: Colors.grey[500]),
+                        Icon(Icons.phone, size: 12, color: Color(0xFFFF6B35)),
                         SizedBox(width: 4),
-                        Text(
-                          address.phoneNumber!,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey[600],
-                          ),
-                        ),
+                        Text(address.phoneNumber!, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
                       ],
                     ),
                   ],
@@ -439,31 +363,23 @@ class _CheckoutAddressScreenState extends State<CheckoutAddressScreen> {
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.1),
-            blurRadius: 10,
-            offset: Offset(0, -2),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 10, offset: Offset(0, -2))],
       ),
       child: SafeArea(
         child: ElevatedButton(
-          onPressed: _selectedAddress != null ? _proceedToPayment : null,
+          onPressed: _selectedAddress != null ? _proceedToReview : null,
           style: ElevatedButton.styleFrom(
             backgroundColor: Color(0xFFFF6B35),
             disabledBackgroundColor: Colors.grey[300],
             padding: EdgeInsets.symmetric(vertical: 16),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             elevation: 0,
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                'Continue to Payment',
+                'Continue to Review',
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.bold,
@@ -471,11 +387,7 @@ class _CheckoutAddressScreenState extends State<CheckoutAddressScreen> {
                 ),
               ),
               SizedBox(width: 8),
-              Icon(
-                Icons.arrow_forward,
-                color: _selectedAddress != null ? Colors.white : Colors.grey[600],
-                size: 20,
-              ),
+              Icon(Icons.arrow_forward, color: _selectedAddress != null ? Colors.white : Colors.grey[600], size: 20),
             ],
           ),
         ),

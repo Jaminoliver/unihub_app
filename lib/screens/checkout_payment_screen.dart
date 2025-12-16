@@ -9,7 +9,6 @@ import '../services/auth_service.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_text_styles.dart';
 import 'order_confirmation_screen.dart';
-import '../main.dart';
 
 class CheckoutPaymentScreen extends StatefulWidget {
   final List<CartModel> selectedItems;
@@ -27,20 +26,32 @@ class CheckoutPaymentScreen extends StatefulWidget {
   State<CheckoutPaymentScreen> createState() => _CheckoutPaymentScreenState();
 }
 
-class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
+class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen>
+    with SingleTickerProviderStateMixin {
   final OrderService _orderService = OrderService();
   final PaymentService _paymentService = PaymentService();
   final CartService _cartService = CartService();
   final AuthService _authService = AuthService();
 
+  late TabController _tabController;
   bool _isProcessing = false;
-  String _currentStep = 'Initializing...';
+  String _currentStep = '';
   bool _showSuccessAnimation = false;
+  int _selectedPaymentTab = 0;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _processCheckout());
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() {
+      setState(() => _selectedPaymentTab = _tabController.index);
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   double _calculateTotalAmount() {
@@ -64,10 +75,19 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
     return false;
   }
 
+  String _formatPrice(double price) {
+    return '₦${price.toStringAsFixed(0).replaceAllMapped(
+      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
+      (m) => '${m[1]},',
+    )}';
+  }
+
   Future<void> _processCheckout() async {
+    if (_isProcessing) return;
+
     setState(() {
       _isProcessing = true;
-      _currentStep = 'Processing checkout...';
+      _currentStep = 'Processing payment...';
     });
 
     try {
@@ -79,7 +99,6 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
       int? transactionId;
 
       if (requiresPayment) {
-        setState(() => _currentStep = 'Processing payment...');
         final escrowAmount = _calculateEscrowAmount();
         final userEmail = user.email ?? 'buyer@unihub.com';
 
@@ -92,16 +111,14 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
             'buyer_id': user.id,
             'item_count': widget.selectedItems.length.toString(),
             'delivery_address': widget.deliveryAddress.shortAddress,
+            'payment_method': _selectedPaymentTab == 0 ? 'card' : 'transfer',
           },
         );
 
         if (paymentResult == null) {
           if (mounted) {
-            _paymentService.showPaymentFailedDialog(
-              context,
-              'Payment was not completed. Please try again.',
-            );
-            Navigator.pop(context);
+            setState(() => _isProcessing = false);
+            _showPaymentFailedDialog('Payment was not completed.');
           }
           return;
         }
@@ -111,44 +128,30 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
       }
 
       setState(() => _currentStep = 'Creating orders...');
+
       final createdOrders = <OrderModel>[];
+      for (final item in widget.selectedItems) {
+        final product = item.product!;
+        final paymentMethod = widget.paymentMethods[item.id] ?? 'full';
 
-     for (final item in widget.selectedItems) {
-  final product = item.product!;
-  final paymentMethod = widget.paymentMethods[item.id] ?? 'full';
+        final order = await _orderService.createOrder(
+          buyerId: user.id,
+          sellerId: product.sellerId,
+          productId: product.id,
+          quantity: item.quantity,
+          unitPrice: product.price,
+          totalAmount: item.totalPrice,
+          paymentMethod: paymentMethod,
+          deliveryAddressId: widget.deliveryAddress.id,
+          paymentReference: paymentReference,
+          transactionId: transactionId,
+          selectedColor: item.selectedColor,
+          selectedSize: item.selectedSize,
+        );
 
-  // ADD DEBUGGING
-  print('🛒 CART ITEM DEBUG:');
-  print('Product: ${product.name}');
-  print('Cart Item Color: ${item.selectedColor}');
-  print('Cart Item Size: ${item.selectedSize}');
-  print('---');
+        createdOrders.add(order);
+      }
 
-  final order = await _orderService.createOrder(
-    buyerId: user.id,
-    sellerId: product.sellerId,
-    productId: product.id,
-    quantity: item.quantity,
-    unitPrice: product.price,
-    totalAmount: item.totalPrice,
-    paymentMethod: paymentMethod,
-    deliveryAddressId: widget.deliveryAddress.id,
-    paymentReference: paymentReference,
-    transactionId: transactionId,
-    selectedColor: item.selectedColor,
-    selectedSize: item.selectedSize,
-  );
-  
-  print('✅ ORDER CREATED:');
-  print('Order Number: ${order.orderNumber}');
-  print('Order Color: ${order.selectedColor}');
-  print('Order Size: ${order.selectedSize}');
-  print('---');
-  
-  createdOrders.add(order);
-}
-
-      setState(() => _currentStep = 'Finalizing...');
       for (final item in widget.selectedItems) {
         await _cartService.removeFromCart(item.id);
       }
@@ -157,8 +160,6 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
       await Future.delayed(Duration(seconds: 2));
 
       if (mounted) {
-        // Navigate to Order Confirmation screen
-        // But clear the cart/checkout screens from the stack first
         Navigator.of(context, rootNavigator: true).pushAndRemoveUntil(
           MaterialPageRoute(
             builder: (context) => OrderConfirmationScreen(orders: createdOrders),
@@ -167,200 +168,459 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen> {
         );
       }
     } catch (e) {
-      print('Error during checkout: $e');
       if (mounted) {
         setState(() => _isProcessing = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Checkout failed: $e'),
-            backgroundColor: Colors.red,
-            duration: Duration(seconds: 5),
-          ),
-        );
-        Navigator.pop(context);
+        _showPaymentFailedDialog('Checkout failed: ${e.toString()}');
       }
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (_showSuccessAnimation) return _buildSuccessAnimation();
-
-    final totalAmount = _calculateTotalAmount();
-    final escrowAmount = _calculateEscrowAmount();
-    final requiresPayment = _requiresOnlinePayment();
-
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: _isProcessing ? SizedBox.shrink() : IconButton(
-          icon: Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () => Navigator.pop(context),
+  void _showPaymentFailedDialog(String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: Row(
+          children: [
+            Icon(Icons.error_outline, color: Colors.red, size: 24),
+            SizedBox(width: 8),
+            Text('Payment Failed', style: TextStyle(fontSize: 18)),
+          ],
         ),
-        title: Text('Payment', style: AppTextStyles.heading.copyWith(fontSize: 18)),
-        centerTitle: true,
-      ),
-      body: Column(
-        children: [
-          Container(
-            color: Colors.white,
-            padding: EdgeInsets.symmetric(vertical: 16),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _buildStep('1', 'Review', true, true),
-                _buildLine(true),
-                _buildStep('2', 'Address', true, true),
-                _buildLine(true),
-                _buildStep('3', 'Payment', true, !_isProcessing),
-              ],
-            ),
+        content: Text(message, style: TextStyle(fontSize: 14)),
+        actions: [
+          TextButton(
+           onPressed: () {
+  Navigator.of(context).pop(); // Only pops the AlertDialog
+},
+            child: Text('Back', style: TextStyle(color: Colors.grey[600])),
           ),
-          Expanded(
-            child: Center(
-              child: Padding(
-                padding: EdgeInsets.all(32),
-                child: _isProcessing ? Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Container(
-                      width: 120,
-                      height: 120,
-                      decoration: BoxDecoration(
-                        color: Color(0xFFFF6B35).withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Center(
-                        child: CircularProgressIndicator(
-                          color: Color(0xFFFF6B35),
-                          strokeWidth: 4,
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: 32),
-                    Text(_currentStep, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600), textAlign: TextAlign.center),
-                    SizedBox(height: 12),
-                    Text('Please wait...', style: TextStyle(fontSize: 14, color: Colors.grey[600])),
-                  ],
-                ) : Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.payment, size: 80, color: Color(0xFFFF6B35)),
-                    SizedBox(height: 24),
-                    Text(
-                      requiresPayment ? 'Secure Payment' : 'Pay on Delivery',
-                      style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                    ),
-                    SizedBox(height: 32),
-                    _buildAmountCard(totalAmount, escrowAmount, requiresPayment),
-                  ],
-                ),
-              ),
+          ElevatedButton(
+            onPressed: () => Navigator.of(context).pop(),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Color(0xFFFF6B35),
+              elevation: 0,
             ),
+            child: Text('Try Again'),
           ),
         ],
       ),
     );
   }
+  
+  // --- START OF NEW WIDGET INSERTION ---
+  
+  /// Creates the consistent bottom bar with the total/escrow amount and action button.
+  Widget _buildBottomBar(bool requiresPayment, double amount) {
+    final label = requiresPayment ? 'Pay Now' : 'Total Amount';
+    final buttonText = requiresPayment ? 'Proceed' : 'Confirm';
+    final priceColor = Color(0xFFFF6B35); // Orange Color
 
-  Widget _buildSuccessAnimation() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white, // <--- 1. SOLID WHITE BACKGROUND
+        border: Border(
+          top: BorderSide(color: Colors.grey.shade200), // Subtle separation line
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: Offset(0, -5),
+          ),
+        ],
+      ),
+      // Apply padding including the bottom safe area padding
+      padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.of(context).padding.bottom),
+      child: SafeArea(
+        top: false,
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 12, 
+                      color: priceColor, // <--- ORANGE LABEL
+                      fontWeight: FontWeight.w500
+                    ), 
+                  ),
+                  Text(
+                    _formatPrice(amount),
+                    style: TextStyle(
+                      fontSize: 18, 
+                      fontWeight: FontWeight.bold, 
+                      color: priceColor // <--- ORANGE PRICE
+                    ), 
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(width: 12),
+            ElevatedButton(
+              onPressed: _processCheckout, // Use your existing checkout function
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white, // <--- BUTTON BACKGROUND IS WHITE
+                foregroundColor: priceColor, // <--- BUTTON TEXT IS ORANGE
+                elevation: 0,
+                side: BorderSide(
+                  color: priceColor, // <--- BUTTON BORDER IS ORANGE (The "outlined" look)
+                  width: 1.5
+                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+              ),
+              child: Text(
+                buttonText,
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  // --- END OF NEW WIDGET INSERTION ---
+
+  @override
+  Widget build(BuildContext context) {
+    if (_showSuccessAnimation) return _buildSuccessScreen();
+
+    final totalAmount = _calculateTotalAmount();
+    final escrowAmount = _calculateEscrowAmount();
+    final requiresPayment = _requiresOnlinePayment();
+
+    return WillPopScope(
+      onWillPop: () async => !_isProcessing,
+      child: Scaffold(
+        backgroundColor: AppColors.background,
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          leading: _isProcessing
+              ? SizedBox.shrink()
+              : IconButton(
+                  icon: Icon(Icons.arrow_back, color: Colors.black),
+                  onPressed: () => Navigator.pop(context),
+                ),
+          title: Text('Payment', style: AppTextStyles.heading.copyWith(fontSize: 18)),
+          centerTitle: true,
+        ),
+        body: _isProcessing
+            ? _buildProcessingState()
+            : requiresPayment
+                ? _buildPaymentOptions(escrowAmount)
+                : _buildPODState(totalAmount),
+      ),
+    );
+  }
+
+  Widget _buildProcessingState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircularProgressIndicator(color: Color(0xFFFF6B35)),
+          SizedBox(height: 24),
+          Text(_currentStep, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          SizedBox(height: 8),
+          Text('Please wait...', style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentOptions(double escrowAmount) {
+    return Column(
+      children: [
+        // Tab Bar
+        Container(
+          margin: EdgeInsets.all(16),
+          padding: EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: Colors.grey[100],
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: TabBar(
+            controller: _tabController,
+            indicator: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Color(0xFFFF6B35).withOpacity(0.3)),
+            ),
+            labelColor: Color(0xFFFF6B35),
+            unselectedLabelColor: Colors.grey[600],
+            labelStyle: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+            tabs: [
+              Tab(child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.credit_card, size: 18), SizedBox(width: 6), Text('Card')])),
+              Tab(child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.account_balance, size: 18), SizedBox(width: 6), Text('Transfer')])),
+            ],
+          ),
+        ),
+
+        // Tab Content
+        Expanded(
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              _buildPaymentTab(
+                icon: Icons.credit_card,
+                title: 'Card Payment',
+                subtitle: 'Visa, Mastercard, Verve',
+                features: [
+                  {'icon': Icons.security, 'text': 'Secure & encrypted'},
+                  {'icon': Icons.flash_on, 'text': 'Instant processing'},
+                ],
+              ),
+              _buildPaymentTab(
+                icon: Icons.account_balance,
+                title: 'Bank Transfer',
+                subtitle: 'USSD or Internet Banking',
+                features: [
+                  {'icon': Icons.phone_android, 'text': 'Dial from mobile'},
+                  {'icon': Icons.check_circle, 'text': 'Auto confirmation'},
+                ],
+              ),
+            ],
+          ),
+        ),
+
+        // --- START OF UPDATE 2 (Replaced Orange Gradient Bar) ---
+        _buildBottomBar(true, escrowAmount),
+        // --- END OF UPDATE 2 ---
+      ],
+    );
+  }
+
+  Widget _buildPaymentTab({required IconData icon, required String title, required String subtitle, required List<Map<String, dynamic>> features}) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(16),
+      child: Column(
+        children: [
+          Container(
+            padding: EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Color(0xFFFF6B35).withOpacity(0.3), width: 2),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Color(0xFFFF6B35).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, size: 28, color: Color(0xFFFF6B35)),
+                ),
+                SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      SizedBox(height: 2),
+                      Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: 14),
+          
+          // Escrow Protection Notice
+          Container(
+            padding: EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Color(0xFFFCD34D).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Color(0xFFFCD34D).withOpacity(0.4)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.shield, color: Color(0xFF92400E), size: 16),
+                    SizedBox(width: 8),
+                    Text('Escrow Protection', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xFF92400E))),
+                  ],
+                ),
+                SizedBox(height: 6),
+                Text(
+                  'Payment held securely until you confirm delivery with your 6-digit code. Auto-refund after 5 days if not delivered.',
+                  style: TextStyle(fontSize: 11, color: Colors.grey[700], height: 1.3),
+                ),
+              ],
+            ),
+          ),
+          
+          SizedBox(height: 10),
+          
+          // Quick Info Chips
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildInfoChip(Icons.lock, 'Funds held max 5 days'),
+              _buildInfoChip(Icons.refresh, 'Auto-refund if undelivered'),
+              _buildInfoChip(Icons.pin, '6-digit delivery code'),
+              _buildInfoChip(Icons.security, 'Never share your code'),
+            ],
+          ),
+          
+          // Paystack Notice (only for card payment)
+          if (icon == Icons.credit_card) ...[
+            SizedBox(height: 10),
+            Container(
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Color(0xFF3B82F6).withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Color(0xFF3B82F6).withOpacity(0.4)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.verified_user, color: Color(0xFF1E40AF), size: 16),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Secured by Paystack',
+                      style: TextStyle(fontSize: 11, color: Color(0xFF1E40AF), fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          
+          SizedBox(height: 14),
+          
+          ...features.map((f) => Container(
+            margin: EdgeInsets.only(bottom: 10),
+            padding: EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.grey.shade200),
+            ),
+            child: Row(
+              children: [
+                Icon(f['icon'] as IconData, color: Color(0xFFFF6B35), size: 18),
+                SizedBox(width: 12),
+                Text(f['text'] as String, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+              ],
+            ),
+          )),
+        ],
+      ),
+    );
+  }
+  
+  Widget _buildInfoChip(IconData icon, String text) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade300),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: Colors.grey[700]),
+          SizedBox(width: 6),
+          Text(text, style: TextStyle(fontSize: 10, color: Colors.grey[700], fontWeight: FontWeight.w500)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPODState(double amount) {
+    return Column(
+      children: [
+        Expanded(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.all(24),
+            child: Column(
+              children: [
+                SizedBox(height: 40),
+                Icon(Icons.delivery_dining, size: 80, color: Color(0xFF10B981)),
+                SizedBox(height: 24),
+                Text('Pay on Delivery', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                SizedBox(height: 8),
+                Text('You\'ll pay ${_formatPrice(amount)} when you receive', textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: Colors.grey[600])),
+                SizedBox(height: 32),
+                Container(
+                  padding: EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: Colors.grey.shade200),
+                  ),
+                  child: Column(
+                    children: [
+                      _buildPODStep(Icons.check_circle, 'Order Confirmed', 'We\'ll prepare your order'),
+                      Divider(height: 32),
+                      _buildPODStep(Icons.local_shipping, 'Item Delivered', 'Receive your items'),
+                      Divider(height: 32),
+                      _buildPODStep(Icons.payments, 'Pay Cash', 'Pay the delivery agent'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        
+        // --- START OF UPDATE 3 (Replaced Green Gradient Bar) ---
+        _buildBottomBar(false, amount),
+        // --- END OF UPDATE 3 ---
+      ],
+    );
+  }
+
+  Widget _buildPODStep(IconData icon, String title, String description) {
+    return Row(
+      children: [
+        Icon(icon, color: Color(0xFF10B981), size: 28),
+        SizedBox(width: 16),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              Text(description, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSuccessScreen() {
     return Scaffold(
       backgroundColor: Colors.white,
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            TweenAnimationBuilder(
-              tween: Tween<double>(begin: 0, end: 1),
-              duration: Duration(milliseconds: 600),
-              curve: Curves.elasticOut,
-              builder: (context, double value, child) {
-                return Transform.scale(
-                  scale: value,
-                  child: Container(
-                    width: 120,
-                    height: 120,
-                    decoration: BoxDecoration(
-                      color: Colors.green,
-                      shape: BoxShape.circle,
-                      boxShadow: [BoxShadow(color: Colors.green.withOpacity(0.3), blurRadius: 20, spreadRadius: 5)],
-                    ),
-                    child: Icon(Icons.check, size: 70, color: Colors.white),
-                  ),
-                );
-              },
-            ),
-            SizedBox(height: 32),
-            Text('Payment Successful!', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            Icon(Icons.check_circle, size: 100, color: Color(0xFF10B981)),
+            SizedBox(height: 24),
+            Text('Order Confirmed!', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
             SizedBox(height: 8),
-            Text('Redirecting to orders...', style: TextStyle(fontSize: 14, color: Colors.grey[600])),
+            Text('Redirecting...', style: TextStyle(fontSize: 14, color: Colors.grey[600])),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildStep(String number, String label, bool active, bool completed) {
-    return Column(
-      children: [
-        Container(
-          width: 32,
-          height: 32,
-          decoration: BoxDecoration(
-            color: active || completed ? Color(0xFFFF6B35) : Colors.grey[300],
-            shape: BoxShape.circle,
-          ),
-          child: Center(
-            child: completed
-                ? Icon(Icons.check, color: Colors.white, size: 18)
-                : Text(number, style: TextStyle(color: active ? Colors.white : Colors.grey[600], fontWeight: FontWeight.bold)),
-          ),
-        ),
-        SizedBox(height: 4),
-        Text(label, style: TextStyle(fontSize: 11, color: active ? Color(0xFFFF6B35) : Colors.grey[600])),
-      ],
-    );
-  }
-
-  Widget _buildLine(bool active) {
-    return Container(
-      width: 40,
-      height: 2,
-      margin: EdgeInsets.only(bottom: 24),
-      color: active ? Color(0xFFFF6B35) : Colors.grey[300],
-    );
-  }
-
-  Widget _buildAmountCard(double totalAmount, double escrowAmount, bool requiresPayment) {
-    return Container(
-      padding: EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 20, offset: Offset(0, 4))],
-      ),
-      child: Column(
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('Total Amount', style: TextStyle(fontSize: 14, color: Colors.grey[700])),
-              Text(_paymentService.formatAmount(totalAmount), style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
-            ],
-          ),
-          if (requiresPayment) ...[
-            Divider(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text('Pay Now', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFFFF6B35))),
-                Text(_paymentService.formatAmount(escrowAmount), style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Color(0xFFFF6B35))),
-              ],
-            ),
-          ],
-        ],
       ),
     );
   }

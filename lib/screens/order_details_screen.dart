@@ -10,50 +10,46 @@ import '../services/reviews_service.dart';
 import '../services/auth_service.dart';
 import '../widgets/leave_review_dialog.dart';
 import 'package:intl/intl.dart';
-// ✅ ADD DISPUTE IMPORTS
-import '../services/dispute_service.dart';
-import '../widgets/dispute_dialog.dart';
-import 'dispute_details_screen.dart';
-import '../models/dispute_model.dart';
-
+import 'track_orders_screen.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
+import 'package:printing/printing.dart';
 
 class OrderDetailsScreen extends StatefulWidget {
   final String orderId;
-
-  const OrderDetailsScreen({
-    super.key,
-    required this.orderId,
-  });
+  const OrderDetailsScreen({super.key, required this.orderId});
 
   @override
   State<OrderDetailsScreen> createState() => _OrderDetailsScreenState();
 }
 
-class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
-  final OrderService _orderService = OrderService();
-  final TextEditingController _deliveryCodeController = TextEditingController();
-  final ReviewService _reviewService = ReviewService();
-  final AuthService _authService = AuthService();
-  // ✅ ADD DISPUTE SERVICE
-  final DisputeService _disputeService = DisputeService();
+class _OrderDetailsScreenState extends State<OrderDetailsScreen>
+    with SingleTickerProviderStateMixin {
+  final _orderService = OrderService();
+  final _reviewService = ReviewService();
+  final _authService = AuthService();
 
   OrderModel? _order;
-  bool _isLoading = true;
   ReviewModel? _existingReview;
+  bool _isLoading = true;
   bool _isLoadingReview = false;
-  // ✅ ADD DISPUTE STATE
-  DisputeModel? _existingDispute;
-  bool _isLoadingDispute = false;
+  bool _isTimelineExpanded = false;
+  bool _isCodeVisible = false;
+  late AnimationController _animationController;
 
   @override
   void initState() {
     super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: Duration(milliseconds: 1500),
+    );
     _loadOrder();
   }
 
   @override
   void dispose() {
-    _deliveryCodeController.dispose();
+    _animationController.dispose();
     super.dispose();
   }
 
@@ -65,38 +61,11 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         _order = order;
         _isLoading = false;
       });
-      
-      // Load existing review if order is delivered
-      if (_order?.isDelivered == true) {
-        await _loadExistingReview();
-      }
-      
-      // ✅ ADD DISPUTE LOADING
-      await _loadDisputeStatus();
+      _animationController.forward();
+      if (_shouldShowReview) await _loadExistingReview();
     } catch (e) {
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading order: $e')),
-      );
-    }
-  }
-
-  // ✅ ADD DISPUTE LOADING METHOD
-  Future<void> _loadDisputeStatus() async {
-    if (_order == null) return;
-    
-    setState(() => _isLoadingDispute = true);
-    try {
-      final dispute = await _disputeService.getDisputeByOrderId(_order!.id);
-      if (mounted) {
-        setState(() {
-          _existingDispute = dispute;
-          _isLoadingDispute = false;
-        });
-      }
-    } catch (e) {
-      print('Error loading dispute: $e');
-      setState(() => _isLoadingDispute = false);
+      _showSnackBar('Error loading order: $e');
     }
   }
 
@@ -106,16 +75,12 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       final userId = _authService.currentUserId;
       if (userId != null) {
         final review = await _reviewService.getUserReviewForOrder(userId, widget.orderId);
-        if (mounted) {
-          setState(() {
-            _existingReview = review;
-            _isLoadingReview = false;
-          });
-        }
+        if (mounted) setState(() => _existingReview = review);
       }
     } catch (e) {
       print('Error loading review: $e');
-      setState(() => _isLoadingReview = false);
+    } finally {
+      if (mounted) setState(() => _isLoadingReview = false);
     }
   }
 
@@ -128,7 +93,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         onSubmit: (rating, comment) async {
           final userId = _authService.currentUserId;
           if (userId == null) throw Exception('User not logged in');
-
           final success = await _reviewService.submitReview(
             productId: _order!.productId,
             userId: userId,
@@ -136,111 +100,118 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
             rating: rating,
             comment: comment,
           );
-
           if (!success) throw Exception('Failed to submit review');
         },
       ),
     );
-
     if (result == true) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Thank you for your review!'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 3),
-        ),
-      );
+      _showSnackBar('Thank you for your review!', isError: false);
       _loadExistingReview();
     }
   }
 
-  // ✅ ADD DISPUTE METHODS
-  Future<void> _openRaiseDisputeDialog() async {
-    final userId = _authService.currentUserId;
-    if (userId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Please log in to raise a dispute')),
-      );
-      return;
-    }
-
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) => RaiseDisputeDialog(
-        order: _order!,
-        userId: userId,
+  Future<void> _generateReceipt() async {
+    final pdf = pw.Document();
+    pdf.addPage(
+      pw.Page(
+        build: (context) => pw.Column(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.Text('UNIHUB RECEIPT', style: pw.TextStyle(fontSize: 24, fontWeight: pw.FontWeight.bold)),
+            pw.SizedBox(height: 20),
+            pw.Text('Order #${_order!.orderNumber}', style: pw.TextStyle(fontSize: 16)),
+            pw.Divider(),
+            pw.Text('Product: ${_order!.productName}'),
+            pw.Text('Quantity: ${_order!.quantity}'),
+            pw.Text('Total Amount: ${_order!.formattedTotal}'),
+            pw.SizedBox(height: 10),
+            pw.Text('Order Date: ${DateFormat('E, d MMM yyyy').format(_order!.createdAt)}'),
+            pw.Text('Status: ${_order!.statusDisplayText}'),
+            pw.SizedBox(height: 10),
+            pw.Text('Delivery Address:'),
+            pw.Text(_order!.deliveryAddress ?? 'Not provided'),
+            pw.Divider(),
+            pw.Text('Generated: ${DateFormat('dd/MM/yyyy HH:mm').format(DateTime.now())}', style: pw.TextStyle(fontSize: 10)),
+          ],
+        ),
       ),
     );
-
-    if (result == true) {
-      await _loadDisputeStatus();
-    }
+    await Printing.layoutPdf(onLayout: (format) async => pdf.save());
   }
 
-  void _viewDisputeDetails() {
-    if (_existingDispute != null) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => DisputeDetailsScreen(
-            disputeId: _existingDispute!.id,
-          ),
+  void _showSnackBar(String message, {bool isError = true}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(isError ? Icons.error_outline : Icons.check_circle, color: Colors.white, size: 20),
+            SizedBox(width: 12),
+            Expanded(child: Text(message)),
+          ],
         ),
-      ).then((_) => _loadDisputeStatus());
-    }
-  }
-
-  bool _canRaiseDispute() {
-    if (_order == null) return false;
-    
-    // Can raise dispute for any order that's not cancelled
-    return !_order!.isCancelled;
-  }
-
-  Future<void> _confirmDelivery() async {
-    final code = _deliveryCodeController.text.trim();
-
-    if (code.isEmpty || code.length != 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Please enter a valid 6-digit code')),
-      );
-      return;
-    }
-
-    try {
-      final success = await _orderService.confirmDelivery(widget.orderId, code);
-
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Delivery confirmed successfully!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        _loadOrder();
-      } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Invalid delivery code. Please try again.'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error: $e'), backgroundColor: Colors.red),
-      );
-    }
+        backgroundColor: isError ? AppColors.errorRed : AppColors.successGreen,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: EdgeInsets.all(16),
+      ),
+    );
   }
 
   void _copyToClipboard(String text, String label) {
     Clipboard.setData(ClipboardData(text: text));
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$label copied'),
-        duration: Duration(seconds: 2),
-      ),
-    );
+    _showSnackBar('$label copied', isError: false);
+  }
+
+  // Computed properties
+  bool get _shouldShowReview => ['delivered', 'cancelled', 'refunded'].contains(_order?.orderStatus);
+  bool get _shouldShowDeliveryCode => _order?.deliveryCode != null && 
+      !_order!.isDelivered && 
+      _order!.orderStatus != 'cancelled' && 
+      _order!.orderStatus != 'refunded';
+  bool get _shouldShowExpectedDelivery => !['delivered', 'cancelled', 'refunded'].contains(_order?.orderStatus);
+  bool get _shouldShowTrackOrder => _order?.orderStatus == 'shipped';
+
+  DateTime get _expectedDeliveryDate => _order!.createdAt.add(Duration(days: 5));
+
+  String get _currentStatusText {
+  if (_order!.orderStatus == 'cancelled') return '⊗ Order Cancelled';
+  if (_order!.orderStatus == 'refunded') return '💰 Order Refunded';
+  if (_order!.isDelivered) return '✓ Order Delivered';
+  if (_order!.isShipped) return '🚚 Package in Transit';
+  if (_order!.orderStatus == 'confirmed') return '📦 Preparing Your Order';
+  return '📋 Order Placed';
+}
+
+  int get _progressPercentage {
+    if (['cancelled', 'refunded', 'delivered'].contains(_order!.orderStatus)) return 100;
+    if (_order!.isShipped) return 75;
+    if (_order!.orderStatus == 'confirmed') return 50;
+    return 25;
+  }
+
+  List<Map<String, dynamic>> get _timelineSteps {
+    bool wasShipped = _order!.isShipped || _order!.isDelivered;
+    List<Map<String, dynamic>> steps = [
+      {'title': 'Order Placed', 'subtitle': DateFormat('E, d MMM').format(_order!.createdAt), 'isCompleted': true, 'icon': Icons.shopping_bag, 'color': AppColors.successGreen},
+      {'title': 'Seller Notified', 'subtitle': 'Seller informed', 'isCompleted': true, 'icon': Icons.notifications_active, 'color': AppColors.infoBlue},
+    ];
+
+    if (_order!.orderStatus == 'cancelled') {
+      if (wasShipped) steps.add({'title': 'Shipped', 'subtitle': 'Was shipped', 'isCompleted': true, 'icon': Icons.local_shipping, 'color': Color(0xFF8B5CF6)});
+      steps.add({'title': 'Cancelled', 'subtitle': 'Order cancelled', 'isCompleted': true, 'icon': Icons.cancel, 'color': AppColors.errorRed});
+      return steps;
+    }
+
+    if (_order!.orderStatus == 'refunded') {
+      if (wasShipped) steps.add({'title': 'Shipped', 'subtitle': 'Was shipped', 'isCompleted': true, 'icon': Icons.local_shipping, 'color': Color(0xFF8B5CF6)});
+      if (_order!.isDelivered) steps.add({'title': 'Delivered', 'subtitle': 'Was delivered', 'isCompleted': true, 'icon': Icons.done_all, 'color': AppColors.successGreen});
+      steps.add({'title': 'Refunded', 'subtitle': 'Amount refunded', 'isCompleted': true, 'icon': Icons.money_off, 'color': AppColors.errorRed});
+      return steps;
+    }
+
+    steps.add({'title': 'Shipped', 'subtitle': wasShipped ? 'On the way' : 'Awaiting shipment', 'isCompleted': wasShipped, 'icon': Icons.local_shipping, 'color': Color(0xFF8B5CF6)});
+    steps.add({'title': 'Delivered', 'subtitle': _order!.isDelivered ? DateFormat('E, d MMM').format(_order!.deliveryConfirmedAt ?? _order!.createdAt) : 'Awaiting delivery', 'isCompleted': _order!.isDelivered, 'icon': Icons.done_all, 'color': AppColors.successGreen});
+    return steps;
   }
 
   @override
@@ -251,892 +222,451 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: Colors.black),
-          onPressed: () {
-            Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (context) => OrdersScreen()),
-              (route) => route.isFirst,
-            );
-          },
+          icon: Icon(Icons.arrow_back, color: AppColors.textDark),
+          onPressed: () => Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => OrdersScreen()),
+            (route) => route.isFirst,
+          ),
         ),
         title: Text('Order Details', style: AppTextStyles.heading.copyWith(fontSize: 18)),
-        centerTitle: true,
+        centerTitle: false,
       ),
       body: _isLoading
-          ? Center(child: CircularProgressIndicator(color: Color(0xFFFF6B35)))
+          ? Center(child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(color: AppColors.primaryOrange),
+                SizedBox(height: 16),
+                Text('Loading order details...', style: AppTextStyles.body),
+              ],
+            ))
           : _order == null
               ? _buildErrorState()
-              : ListView(
-                  padding: EdgeInsets.all(16),
-                  children: [
-                    _buildStatusCard(),
-                    SizedBox(height: 16),
-                    _buildOrderInfoCard(),
-                    SizedBox(height: 16),
-                    _buildProductCard(),
-                    SizedBox(height: 16),
-                    _buildDeliveryCard(),
-                    SizedBox(height: 16),
-                    _buildPaymentCard(),
-
-                    if (_order!.isDelivered) ...[
+              : RefreshIndicator(
+                  onRefresh: _loadOrder,
+                  color: AppColors.primaryOrange,
+                  child: ListView(
+                    padding: EdgeInsets.all(16),
+                    children: [
+                      _buildStatusBanner(),
+                      if (_shouldShowExpectedDelivery) ...[
+                        SizedBox(height: 12),
+                        _buildExpectedDeliveryCard(),
+                      ],
+                      if (_shouldShowTrackOrder) ...[
+                        SizedBox(height: 12),
+                        _buildTrackOrderButton(),
+                      ],
                       SizedBox(height: 16),
-                      _buildReviewSection(),
-                    ],
-                    
-                    // ✅ DISPUTE SECTION - ALWAYS SHOWN
-                    SizedBox(height: 16),
-                    _buildDisputeSection(),
-                    
-                    if (!_order!.isDelivered && !_order!.isCancelled) ...[
+                      _buildTimeline(),
                       SizedBox(height: 16),
-                      _buildDeliveryConfirmationCard(),
+                      _buildProductCard(),
+                      SizedBox(height: 16),
+                      _buildOrderInfoCard(),
+                      SizedBox(height: 16),
+                      _buildDeliveryAddressCard(),
+                      SizedBox(height: 16),
+                      _buildPaymentCard(),
+                      SizedBox(height: 16),
+                      _buildReceiptButton(),
+                      if (_shouldShowDeliveryCode) ...[
+                        SizedBox(height: 16),
+                        _buildDeliveryCodeCard(),
+                      ],
+                      if (_shouldShowReview) ...[
+                        SizedBox(height: 16),
+                        _buildReviewSection(),
+                      ],
+                      SizedBox(height: 32),
                     ],
-                    SizedBox(height: 32),
-                  ],
+                  ),
                 ),
     );
   }
 
-  // ✅ ADD DISPUTE SECTION WIDGET
-  Widget _buildDisputeSection() {
-    print('=== _buildDisputeSection DEBUG ===');
-    print('_isLoadingDispute: $_isLoadingDispute');
-    print('_existingDispute: $_existingDispute');
-    print('_order is null: ${_order == null}');
-    if (_order != null) {
-      print('_order.isCancelled: ${_order!.isCancelled}');
-      print('_canRaiseDispute(): ${_canRaiseDispute()}');
-    }
-    print('===================================');
-    
-    if (_isLoadingDispute) {
-      return Container(
-        padding: EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: Offset(0, 2),
-            ),
-          ],
-        ),
-        child: Center(
-          child: CircularProgressIndicator(color: Color(0xFFFF6B35)),
+  Widget _buildErrorState() => Center(
+        child: Padding(
+          padding: EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: EdgeInsets.all(24),
+                decoration: BoxDecoration(color: AppColors.errorRed.withOpacity(0.1), shape: BoxShape.circle),
+                child: Icon(Icons.error_outline, size: 64, color: AppColors.errorRed),
+              ),
+              SizedBox(height: 24),
+              Text('Order not found', style: AppTextStyles.heading.copyWith(fontSize: 18)),
+              SizedBox(height: 8),
+              Text('This order could not be loaded', style: AppTextStyles.body, textAlign: TextAlign.center),
+            ],
+          ),
         ),
       );
-    }
 
-    // If an existing dispute exists, always show it
-    if (_existingDispute != null) {
-      return Container(
+  Widget _buildStatusBanner() {
+    final configs = {
+      'pending': [Color(0xFFFFF7ED), Color(0xFFF59E0B), Icons.schedule, 'Pending'],
+      'confirmed': [Color(0xFFEFF6FF), Color(0xFF3B82F6), Icons.check_circle, 'Processing'],
+      'shipped': [Color(0xFFF3E8FF), Color(0xFF8B5CF6), Icons.local_shipping, 'Shipped'],
+      'delivered': [Color(0xFFECFDF5), Color(0xFF10B981), Icons.done_all, 'Delivered'],
+      'cancelled': [Color(0xFFFEF2F2), Color(0xFFEF4444), Icons.cancel, 'Cancelled'],
+      'refunded': [Color(0xFFFEF2F2), Color(0xFFEF4444), Icons.money_off, 'Refunded'],
+    };
+    final config = configs[_order!.orderStatus] ?? configs['pending']!;
+    
+    return FadeTransition(
+      opacity: _animationController,
+      child: Container(
         padding: EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: Offset(0, 2),
-            ),
-          ],
+          color: config[0] as Color,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: (config[1] as Color).withOpacity(0.3)),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        child: Row(
           children: [
-            Row(
-              children: [
-                Icon(Icons.report_problem, color: Colors.orange[700], size: 20),
-                SizedBox(width: 8),
-                Text(
-                  'Active Dispute',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 12),
             Container(
-              padding: EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: _getDisputeStatusColor().withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: _getDisputeStatusColor().withOpacity(0.3)),
-              ),
-              child: Row(
+              padding: EdgeInsets.all(10),
+              decoration: BoxDecoration(color: config[1] as Color, shape: BoxShape.circle),
+              child: Icon(config[2] as IconData, color: Colors.white, size: 22),
+            ),
+            SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(_getDisputeStatusIcon(), color: _getDisputeStatusColor(), size: 20),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _existingDispute!.statusDisplayText,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: _getDisputeStatusColor(),
-                          ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          _existingDispute!.reasonDisplayText,
-                          style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                        ),
-                      ],
-                    ),
-                  ),
+                  Text(config[3] as String, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textDark)),
+                  SizedBox(height: 4),
+                  Text(_order!.orderNumber, style: TextStyle(fontSize: 11, color: AppColors.textLight, fontFamily: 'monospace')),
                 ],
               ),
             ),
-            SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: OutlinedButton.icon(
-                onPressed: _viewDisputeDetails,
-                icon: Icon(Icons.visibility, size: 18),
-                label: Text('View Dispute Details'),
-                style: OutlinedButton.styleFrom(
-                  side: BorderSide(color: Colors.orange[700]!, width: 2),
-                  foregroundColor: Colors.orange[700],
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ),
           ],
         ),
-      );
-    }
-
-    // No existing dispute - show "Raise Dispute" button if order allows it
-    if (_canRaiseDispute()) {
-      return Container(
-        padding: EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.orange[50]!, Colors.red[50]!],
-          ),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.orange[200]!),
-        ),
-        child: Column(
-          children: [
-            Icon(Icons.report_problem, size: 40, color: Colors.orange[700]),
-            SizedBox(height: 12),
-            Text(
-              'Issue with your order?',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
-              ),
-            ),
-            SizedBox(height: 4),
-            Text(
-              'We\'re here to help resolve any problems',
-              style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: 16),
-            SizedBox(
-              width: double.infinity,
-              height: 50,
-              child: ElevatedButton.icon(
-                onPressed: _openRaiseDisputeDialog,
-                icon: Icon(Icons.flag, size: 20),
-                label: Text(
-                  'Raise a Dispute',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.orange[700],
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  elevation: 2,
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Default: Show info card that disputes can be raised later
-    return Container(
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.grey[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey[200]!),
       ),
-      child: Row(
-        children: [
-          Icon(Icons.info_outline, color: Colors.grey[600], size: 24),
-          SizedBox(width: 12),
-          Expanded(
+    );
+  }
+
+  Widget _buildExpectedDeliveryCard() => Container(
+        padding: EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppColors.infoBlue.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppColors.infoBlue.withOpacity(0.3)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.local_shipping, color: AppColors.infoBlue, size: 20),
+            SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Expected Delivery', style: TextStyle(fontSize: 12, color: AppColors.textLight)),
+                  Text(DateFormat('E, d MMM yyyy').format(_expectedDeliveryDate), 
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textDark)),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+
+  Widget _buildTrackOrderButton() => SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TrackOrdersScreen())),
+          icon: Icon(Icons.map, size: 18),
+          label: Text('Track Order'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.primaryOrange,
+            side: BorderSide(color: AppColors.primaryOrange, width: 1.5),
+            padding: EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+      );
+
+  Widget _buildTimeline() => SlideTransition(
+        position: Tween<Offset>(begin: Offset(0, 0.1), end: Offset.zero).animate(CurvedAnimation(parent: _animationController, curve: Curves.easeOut)),
+        child: FadeTransition(
+          opacity: _animationController,
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: Offset(0, 2))],
+            ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  'Dispute Resolution Available',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.grey[800],
+                InkWell(
+                  onTap: () => setState(() => _isTimelineExpanded = !_isTimelineExpanded),
+                  child: Container(
+                    padding: EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.timeline, color: AppColors.primaryOrange, size: 20),
+                            SizedBox(width: 10),
+                            Expanded(child: Text(_currentStatusText, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textDark))),
+                            Icon(_isTimelineExpanded ? Icons.expand_less : Icons.expand_more, color: AppColors.textLight),
+                          ],
+                        ),
+                        SizedBox(height: 12),
+                        Stack(
+                          children: [
+                            Container(height: 6, decoration: BoxDecoration(color: AppColors.lightGrey.withOpacity(0.3), borderRadius: BorderRadius.circular(3))),
+                            FractionallySizedBox(
+                              widthFactor: _progressPercentage / 100,
+                              child: Container(height: 6, decoration: BoxDecoration(
+                                gradient: LinearGradient(colors: [AppColors.primaryOrange, Color(0xFFFF8C42)]),
+                                borderRadius: BorderRadius.circular(3),
+                              )),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 8),
+                        Text('Tap to view details', style: TextStyle(fontSize: 11, color: AppColors.textLight)),
+                      ],
+                    ),
                   ),
                 ),
-                SizedBox(height: 4),
-                Text(
-                  _order!.isCancelled
-                      ? 'This order has been cancelled. Contact support if you need assistance.'
-                      : _order!.isDelivered
-                          ? 'You can raise a dispute within 7 days of delivery if there are any issues.'
-                          : 'You can raise a dispute if there are any issues with your order.',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Colors.grey[600],
-                    height: 1.4,
+                if (_isTimelineExpanded) ...[
+                  Divider(height: 1),
+                  Padding(
+                    padding: EdgeInsets.all(16),
+                    child: Column(
+                      children: _timelineSteps.asMap().entries.map((entry) {
+                        final index = entry.key;
+                        final step = entry.value;
+                        return _buildTimelineStep(step, index == 0, index == _timelineSteps.length - 1);
+                      }).toList(),
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  Color _getDisputeStatusColor() {
-    switch (_existingDispute?.status) {
-      case 'open':
-        return Colors.orange;
-      case 'under_review':
-        return Colors.blue;
-      case 'resolved':
-        return Colors.green;
-      case 'closed':
-        return Colors.grey;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  IconData _getDisputeStatusIcon() {
-    switch (_existingDispute?.status) {
-      case 'open':
-        return Icons.report_problem;
-      case 'under_review':
-        return Icons.search;
-      case 'resolved':
-        return Icons.check_circle;
-      case 'closed':
-        return Icons.cancel;
-      default:
-        return Icons.help;
-    }
-  }
-
-  Widget _buildErrorState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.error_outline, size: 60, color: Colors.grey[400]),
-          SizedBox(height: 16),
-          Text(
-            'Order not found',
-            style: TextStyle(fontSize: 16, color: Colors.grey[700]),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusCard() {
-    return Container(
-      padding: EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: _getStatusGradient(),
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: _getStatusColor().withOpacity(0.3),
-            blurRadius: 15,
-            offset: Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Icon(
-            _getStatusIcon(),
-            color: Colors.white,
-            size: 48,
-          ),
-          SizedBox(height: 12),
-          Text(
-            _order!.statusDisplayText,
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: Colors.white,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: 4),
-          Text(
-            _order!.orderNumber,
-            style: TextStyle(
-              fontSize: 13,
-              color: Colors.white.withOpacity(0.9),
-              fontFamily: 'monospace',
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+      );
 
-  Color _getStatusColor() {
-    switch (_order!.orderStatus) {
-      case 'pending':
-        return Colors.orange;
-      case 'confirmed':
-        return Colors.blue;
-      case 'shipped':
-        return Colors.purple;
-      case 'delivered':
-        return Colors.green;
-      case 'cancelled':
-      case 'refunded':
-        return Colors.red;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  List<Color> _getStatusGradient() {
-    final color = _getStatusColor();
-    return [color, color.withOpacity(0.7)];
-  }
-
-  IconData _getStatusIcon() {
-    switch (_order!.orderStatus) {
-      case 'pending':
-        return Icons.schedule;
-      case 'confirmed':
-        return Icons.check_circle;
-      case 'shipped':
-        return Icons.local_shipping;
-      case 'delivered':
-        return Icons.done_all;
-      case 'cancelled':
-        return Icons.cancel;
-      case 'refunded':
-        return Icons.money_off;
-      default:
-        return Icons.info;
-    }
-  }
-
-  Widget _buildOrderInfoCard() {
-    return Container(
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _buildInfoRow('Order Number', _order!.orderNumber, Icons.receipt_long, copyable: true),
-          Divider(height: 20),
-          _buildInfoRow('Order Date', _formatDate(_order!.createdAt), Icons.calendar_today),
-          Divider(height: 20),
-          _buildInfoRow('Payment Method', _getPaymentMethodText(), Icons.payment),
-          
-          // Only show payment status if NOT a cancelled POD order
-          if (!(_order!.isCancelled && _order!.isPayOnDelivery)) ...[
-            Divider(height: 20),
-            _buildInfoRow('Payment Status', _order!.paymentStatusDisplayText, Icons.account_balance_wallet,
-                color: _order!.isPaymentCompleted ? Colors.green : Colors.orange),
-          ],
-        ],
-      ),
-    );
-  }
-
-  String _getPaymentMethodText() {
-    switch (_order!.paymentMethod) {
-      case 'full':
-        return 'Full Payment';
-      case 'half':
-        return 'Half Payment';
-      case 'pod':
-        return 'Pay on Delivery';
-      default:
-        return _order!.paymentMethod;
-    }
-  }
-
-  Widget _buildProductCard() {
-    return Container(
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Product Details',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
-          ),
-          SizedBox(height: 16),
-          Row(
-            children: [
-              if (_order!.productImageUrl != null)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.network(
-                    _order!.productImageUrl!,
-                    width: 70,
-                    height: 70,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) => Container(
-                      width: 70,
-                      height: 70,
-                      color: Colors.grey[200],
-                      child: Icon(Icons.image, color: Colors.grey),
-                    ),
-                  ),
-                )
-              else
-                Container(
-                  width: 70,
-                  height: 70,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[200],
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(Icons.image, color: Colors.grey),
-                ),
-              SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _order!.productName ?? 'Product',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    SizedBox(height: 4),
-                    Text(
-                      'Qty: ${_order!.quantity}',
-                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                    ),
-                    if (_order!.selectedSize != null) ...[
-                      SizedBox(height: 4),
-                      Text(
-                        'Size: ${_order!.selectedSize}',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                    ],
-                    if (_order!.selectedColor != null) ...[
-                      SizedBox(height: 4),
-                      Text(
-                        'Color: ${_order!.selectedColor}',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                      ),
-                    ],
-                    SizedBox(height: 4),
-                    Text(
-                      _order!.formattedTotal,
-                      style: TextStyle(
-                        fontSize: 15,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFFFF6B35),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDeliveryCard() {
-    return Container(
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.location_on, color: Color(0xFFFF6B35), size: 20),
-              SizedBox(width: 8),
-              Text(
-                'Delivery Address',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.black87,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 12),
-          Text(
-            _order!.deliveryAddress ?? 'Address not available',
-            style: TextStyle(
-              fontSize: 13,
-              color: Colors.grey[700],
-              height: 1.5,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPaymentCard() {
-    return Container(
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Payment Breakdown',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
-          ),
-          SizedBox(height: 12),
-          _buildPaymentRow('Subtotal', _order!.formattedTotal),
-          _buildPaymentRow('Commission (5%)', _formatPrice(_order!.commissionAmount)),
-          _buildPaymentRow('Seller Receives', _formatPrice(_order!.sellerPayoutAmount ?? 0),
-              bold: true, color: Colors.green),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDeliveryConfirmationCard() {
-    if (_order!.deliveryCode == null || _order!.deliveryCode!.isEmpty) {
-      return SizedBox.shrink();
-    }
-
-    return Container(
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.green[50],
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.green[200]!),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.lock, color: Colors.green[700], size: 20),
-              SizedBox(width: 8),
-              Text(
-                'Your Delivery Code',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.green[900],
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 4),
-          Text(
-            'Share this code ONLY when you receive your item',
-            style: TextStyle(fontSize: 12, color: Colors.green[800], fontWeight: FontWeight.w500),
-          ),
-          SizedBox(height: 16),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.green[300]!, width: 2),
-                ),
-                child: Text(
-                  _order!.deliveryCode!,
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.green[900],
-                    fontFamily: 'monospace',
-                    letterSpacing: 8,
-                  ),
-                ),
-              ),
-              IconButton(
-                icon: Icon(Icons.copy, color: Colors.green[700], size: 28),
-                onPressed: () => _copyToClipboard(_order!.deliveryCode!, 'Delivery code'),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildInfoRow(String label, String value, IconData icon,
-      {bool copyable = false, Color? color}) {
+  Widget _buildTimelineStep(Map<String, dynamic> step, bool isFirst, bool isLast) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Icon(icon, size: 18, color: Colors.grey[600]),
+        Column(
+          children: [
+            if (!isFirst) Container(width: 2, height: 20, color: step['isCompleted'] ? step['color'] : AppColors.lightGrey),
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: step['isCompleted'] ? step['color'] : AppColors.lightGrey.withOpacity(0.3),
+                shape: BoxShape.circle,
+                boxShadow: step['isCompleted'] ? [BoxShadow(color: (step['color'] as Color).withOpacity(0.3), blurRadius: 8, offset: Offset(0, 2))] : [],
+              ),
+              child: Icon(step['icon'], size: 18, color: step['isCompleted'] ? Colors.white : AppColors.textLight),
+            ),
+            if (!isLast) Container(width: 2, height: 24, color: step['isCompleted'] ? step['color'] : AppColors.lightGrey),
+          ],
+        ),
         SizedBox(width: 12),
         Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-              ),
-              SizedBox(height: 2),
-              Text(
-                value,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: color ?? Colors.black87,
-                ),
-              ),
-            ],
+          child: Padding(
+            padding: EdgeInsets.only(top: 6, bottom: isLast ? 0 : 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(step['title'], style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: step['isCompleted'] ? AppColors.textDark : AppColors.textLight)),
+                SizedBox(height: 3),
+                Text(step['subtitle'], style: TextStyle(fontSize: 11, color: AppColors.textLight)),
+              ],
+            ),
           ),
         ),
-        if (copyable)
-          IconButton(
-            icon: Icon(Icons.copy, size: 18, color: Colors.grey[600]),
-            onPressed: () => _copyToClipboard(value, label),
-          ),
       ],
     );
   }
 
-  Widget _buildPaymentRow(String label, String value, {bool bold = false, Color? color}) {
-    return Padding(
-      padding: EdgeInsets.only(bottom: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: bold ? 14 : 13,
-              fontWeight: bold ? FontWeight.bold : FontWeight.normal,
-              color: color ?? Colors.grey[700],
+  Widget _buildProductCard() => _buildCard(
+        'Product Details',
+        Icons.shopping_bag,
+        Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: _order!.productImageUrl != null
+                  ? Image.network(_order!.productImageUrl!, width: 70, height: 70, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _placeholder())
+                  : _placeholder(),
             ),
-          ),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: bold ? 15 : 13,
-              fontWeight: bold ? FontWeight.bold : FontWeight.w600,
-              color: color ?? Colors.black87,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  String _formatPrice(double price) {
-    return '₦${price.toStringAsFixed(0).replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]},',
-    )}';
-  }
-
-  String _formatDate(DateTime date) {
-    final format = DateFormat('E, d MMM yyyy');
-    return format.format(date);
-  }
-
-  Widget _buildReviewSection() {
-    if (_isLoadingReview) {
-      return Container(
-        padding: EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: Offset(0, 2),
+            SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_order!.productName ?? 'Product', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
+                  SizedBox(height: 6),
+                  _chip(Icons.inventory_2, 'Qty: ${_order!.quantity}'),
+                  if (_order!.selectedSize != null) ...[SizedBox(height: 4), _chip(Icons.straighten, 'Size: ${_order!.selectedSize}')],
+                  if (_order!.selectedColor != null) ...[SizedBox(height: 4), _chip(Icons.palette, 'Color: ${_order!.selectedColor}')],
+                  SizedBox(height: 6),
+                  Text(_order!.formattedTotal, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primaryOrange)),
+                ],
+              ),
             ),
           ],
-        ),
-        child: Center(
-          child: CircularProgressIndicator(color: Color(0xFFFF6B35)),
         ),
       );
-    }
 
-    if (_existingReview != null) {
-      // User has already reviewed - show their review
-      return Container(
+  Widget _buildOrderInfoCard() => _buildCard(
+        'Order Information',
+        Icons.receipt_long,
+        Column(
+          children: [
+            _infoRow('Order Number', _order!.orderNumber, Icons.confirmation_number, copyable: true),
+            Divider(height: 20),
+            _infoRow('Order Date', DateFormat('E, d MMM yyyy').format(_order!.createdAt), Icons.calendar_today),
+            Divider(height: 20),
+            _infoRow('Payment Method', {'full': 'Full Payment', 'half': 'Half Payment', 'pod': 'Pay on Delivery'}[_order!.paymentMethod] ?? _order!.paymentMethod, Icons.payment),
+            if (!(_order!.isCancelled && _order!.isPayOnDelivery)) ...[
+              Divider(height: 20),
+              _infoRow('Payment Status', _order!.paymentStatusDisplayText, Icons.account_balance_wallet, 
+                color: _order!.isPaymentCompleted ? AppColors.successGreen : AppColors.warningYellow),
+            ],
+          ],
+        ),
+      );
+
+  Widget _buildDeliveryAddressCard() => _buildCard(
+        'Delivery Address',
+        Icons.location_on,
+        Text(_order!.deliveryAddress ?? 'Not provided', style: TextStyle(fontSize: 13, color: AppColors.textLight, height: 1.5)),
+      );
+
+  Widget _buildPaymentCard() => _buildCard(
+        'Payment Summary',
+        Icons.receipt,
+        Column(
+          children: [
+            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+              Text('Order Total', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textDark)),
+              Text(_order!.formattedTotal, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primaryOrange)),
+            ]),
+          ],
+        ),
+      );
+
+  Widget _buildReceiptButton() => SizedBox(
+        width: double.infinity,
+        child: OutlinedButton.icon(
+          onPressed: _generateReceipt,
+          icon: Icon(Icons.download, size: 18),
+          label: Text('Download Receipt'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AppColors.textDark,
+            side: BorderSide(color: AppColors.lightGrey),
+            padding: EdgeInsets.symmetric(vertical: 14),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+      );
+
+  Widget _buildDeliveryCodeCard() => Container(
         padding: EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: Offset(0, 2),
-            ),
-          ],
+          color: AppColors.successGreen.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppColors.successGreen.withOpacity(0.3)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Icon(Icons.check_circle, color: Colors.green, size: 20),
-                SizedBox(width: 8),
-                Text(
-                  'Your Review',
-                  style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black87,
+                Icon(Icons.lock, color: AppColors.successGreen, size: 20),
+                SizedBox(width: 10),
+                Expanded(child: Text('Your Delivery Code', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textDark))),
+              ],
+            ),
+            SizedBox(height: 10),
+            Container(
+              padding: EdgeInsets.all(10),
+              decoration: BoxDecoration(color: Colors.white.withOpacity(0.7), borderRadius: BorderRadius.circular(10)),
+              child: Text('Share ONLY when you receive your item', style: TextStyle(fontSize: 11, color: AppColors.textDark, fontWeight: FontWeight.w500)),
+            ),
+            SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: Container(
+                    padding: EdgeInsets.symmetric(vertical: 12),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.successGreen.withOpacity(0.5))),
+                    child: Center(
+                      child: Text(
+                        _isCodeVisible ? _order!.deliveryCode! : '●●●●●●',
+                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.successGreen, letterSpacing: _isCodeVisible ? 6 : 4),
+                      ),
+                    ),
                   ),
+                ),
+                SizedBox(width: 10),
+                IconButton(
+                  onPressed: () => setState(() => _isCodeVisible = !_isCodeVisible),
+                  icon: Icon(_isCodeVisible ? Icons.visibility_off : Icons.visibility, color: AppColors.successGreen),
+                  style: IconButton.styleFrom(backgroundColor: Colors.white, padding: EdgeInsets.all(12)),
+                ),
+                IconButton(
+                  onPressed: () => _copyToClipboard(_order!.deliveryCode!, 'Delivery code'),
+                  icon: Icon(Icons.copy, color: AppColors.successGreen),
+                  style: IconButton.styleFrom(backgroundColor: Colors.white, padding: EdgeInsets.all(12)),
                 ),
               ],
             ),
-            SizedBox(height: 12),
+          ],
+        ),
+      );
+
+  Widget _buildReviewSection() {
+    if (_isLoadingReview) return _buildCard('Review', Icons.star, Center(child: CircularProgressIndicator(color: AppColors.primaryOrange)));
+
+    if (_existingReview != null) {
+      return _buildCard(
+        'Your Review',
+        Icons.check_circle,
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Row(
-              children: List.generate(5, (index) {
-                return Icon(
-                  index < _existingReview!.ratingInt
-                      ? Icons.star
-                      : Icons.star_border,
-                  size: 20,
-                  color: Color(0xFFFF6B35),
-                );
-              }),
-            ),
-            if (_existingReview!.isVerifiedPurchase) ...[
-              SizedBox(height: 6),
-              Row(
-                children: [
-                  Icon(Icons.verified, color: Color(0xFF10B981), size: 14),
+              children: [
+                ...List.generate(5, (i) => Icon(i < _existingReview!.ratingInt ? Icons.star : Icons.star_border, size: 20, color: AppColors.primaryOrange)),
+                if (_existingReview!.isVerifiedPurchase) ...[
+                  SizedBox(width: 8),
+                  Icon(Icons.verified, color: AppColors.successGreen, size: 14),
                   SizedBox(width: 4),
-                  Text(
-                    'Verified Purchase',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFF10B981),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
+                  Text('Verified', style: TextStyle(fontSize: 11, color: AppColors.successGreen, fontWeight: FontWeight.w600)),
                 ],
-              ),
-            ],
-            SizedBox(height: 8),
-            Text(
-              _existingReview!.comment,
-              style: TextStyle(
-                fontSize: 13,
-                color: Colors.grey[700],
-                height: 1.5,
-              ),
+              ],
             ),
+            SizedBox(height: 10),
+            Text(_existingReview!.comment, style: TextStyle(fontSize: 13, color: AppColors.textDark, height: 1.4)),
             SizedBox(height: 8),
-            Text(
-              'Reviewed ${_existingReview!.timeAgo}',
-              style: TextStyle(
-                fontSize: 11,
-                color: Colors.grey[500],
-              ),
-            ),
+            Text('Reviewed ${_existingReview!.timeAgo}', style: TextStyle(fontSize: 10, color: AppColors.textLight)),
             SizedBox(height: 12),
-            TextButton.icon(
-              onPressed: _showLeaveReviewDialog,
-              icon: Icon(Icons.edit, size: 18),
-              label: Text('Edit Review'),
-              style: TextButton.styleFrom(
-                foregroundColor: Color(0xFFFF6B35),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _showLeaveReviewDialog,
+                icon: Icon(Icons.edit, size: 16),
+                label: Text('Edit Review'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.primaryOrange,
+                  side: BorderSide(color: AppColors.primaryOrange),
+                  padding: EdgeInsets.symmetric(vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
               ),
             ),
           ],
@@ -1144,64 +674,24 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       );
     }
 
-    // User hasn't reviewed yet - show button
-    return Container(
-      padding: EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFFFF6B35).withOpacity(0.1), Color(0xFFFF8C42).withOpacity(0.1)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Color(0xFFFF6B35).withOpacity(0.3)),
-      ),
-      child: Column(
+    return _buildCard(
+      'Rate Your Experience',
+      Icons.star_outline,
+      Column(
         children: [
-          Icon(
-            Icons.rate_review,
-            size: 40,
-            color: Color(0xFFFF6B35),
-          ),
-          SizedBox(height: 12),
-          Text(
-            'How was your experience?',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
-            ),
-          ),
-          SizedBox(height: 4),
-          Text(
-            'Share your thoughts about this product',
-            style: TextStyle(
-              fontSize: 13,
-              color: Colors.grey[600],
-            ),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: 16),
+          Text('How satisfied are you with this product?', style: TextStyle(fontSize: 13, color: AppColors.textLight), textAlign: TextAlign.center),
+          SizedBox(height: 14),
           SizedBox(
             width: double.infinity,
-            height: 50,
             child: ElevatedButton.icon(
               onPressed: _showLeaveReviewDialog,
-              icon: Icon(Icons.star, size: 20),
-              label: Text(
-                'Leave a Review',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+              icon: Icon(Icons.rate_review, size: 18),
+              label: Text('Leave Review', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
               style: ElevatedButton.styleFrom(
-                backgroundColor: Color(0xFFFF6B35),
+                backgroundColor: AppColors.primaryOrange,
                 foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                elevation: 2,
+                padding: EdgeInsets.symmetric(vertical: 14),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
             ),
           ),
@@ -1209,4 +699,50 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       ),
     );
   }
+
+  Widget _buildCard(String title, IconData icon, Widget child) => Container(
+        padding: EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: Offset(0, 2))],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [Icon(icon, color: AppColors.primaryOrange, size: 20), SizedBox(width: 10), Text(title, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textDark))]),
+            SizedBox(height: 14),
+            child,
+          ],
+        ),
+      );
+
+  Widget _infoRow(String label, String value, IconData icon, {bool copyable = false, Color? color}) => Row(
+        children: [
+          Icon(icon, size: 16, color: AppColors.textLight),
+          SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: TextStyle(fontSize: 11, color: AppColors.textLight)),
+                SizedBox(height: 2),
+                Text(value, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: color ?? AppColors.textDark)),
+              ],
+            ),
+          ),
+          if (copyable) IconButton(icon: Icon(Icons.copy, size: 16, color: AppColors.textLight), onPressed: () => _copyToClipboard(value, label), padding: EdgeInsets.zero, constraints: BoxConstraints()),
+        ],
+      );
+
+  Widget _chip(IconData icon, String text) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: AppColors.textLight),
+          SizedBox(width: 4),
+          Text(text, style: TextStyle(fontSize: 11, color: AppColors.textLight)),
+        ],
+      );
+
+  Widget _placeholder() => Container(width: 70, height: 70, decoration: BoxDecoration(color: AppColors.lightGrey.withOpacity(0.3), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.image, color: AppColors.textLight, size: 32));
 }

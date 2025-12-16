@@ -14,6 +14,8 @@ dependencies:
   # UI + Icons
   cupertino_icons: ^1.0.8
   flutter_svg: ^2.0.9
+  pdf: ^3.10.4
+  printing: ^5.11.0
   flutter_image_compress: ^2.1.0
   google_fonts: ^6.2.1
   cached_network_image: ^3.2.4

@@ -3,12 +3,12 @@ class DisputeModel {
   final String id;
   final String orderId;
   final String raisedByUserId;
-  final String raisedByType; // 'buyer' or 'seller'
+  final String raisedByType;
   final String disputeReason;
   final String description;
   final List<String>? evidenceUrls;
-  final String status; // 'open', 'under_review', 'resolved', 'closed'
-  final String priority; // 'low', 'medium', 'high'
+  final String status;
+  final String priority;
   final String? adminNotes;
   final String? resolution;
   final String? adminAction;
@@ -16,12 +16,23 @@ class DisputeModel {
   final DateTime? resolvedAt;
   final DateTime createdAt;
   final DateTime? updatedAt;
+  final String? disputeNumber;
 
-  // Joined data
+  // Joined order data
   final String? orderNumber;
   final String? productName;
   final String? productImageUrl;
   final double? orderAmount;
+  final String? orderStatus;
+  final String? paymentMethod;
+  final double? escrowAmount;
+  
+  // Additional buyer/seller info
+  final String? buyerName;
+  final String? buyerEmail;
+  final String? sellerName;
+  final String? sellerEmail;
+  final String? deliveryAddress;
 
   DisputeModel({
     required this.id,
@@ -40,15 +51,27 @@ class DisputeModel {
     this.resolvedAt,
     required this.createdAt,
     this.updatedAt,
+    this.disputeNumber,
     this.orderNumber,
     this.productName,
     this.productImageUrl,
     this.orderAmount,
+    this.orderStatus,
+    this.paymentMethod,
+    this.escrowAmount,
+    this.buyerName,
+    this.buyerEmail,
+    this.sellerName,
+    this.sellerEmail,
+    this.deliveryAddress,
   });
 
   factory DisputeModel.fromJson(Map<String, dynamic> json) {
     final order = json['order'] as Map<String, dynamic>?;
     final product = order?['product'] as Map<String, dynamic>?;
+    final buyer = order?['buyer'] as Map<String, dynamic>?;
+    final seller = order?['seller'] as Map<String, dynamic>?;
+    final deliveryAddr = order?['delivery_address'] as Map<String, dynamic>?;
 
     return DisputeModel(
       id: json['id'] as String,
@@ -73,7 +96,13 @@ class DisputeModel {
       updatedAt: json['updated_at'] != null
           ? DateTime.parse(json['updated_at'] as String)
           : null,
+      disputeNumber: json['dispute_number'] as String?,
       orderNumber: order?['order_number'] as String?,
+      orderStatus: order?['order_status'] as String?,
+      paymentMethod: order?['payment_method'] as String?,
+      escrowAmount: order?['escrow_amount'] != null
+          ? (order!['escrow_amount'] as num).toDouble()
+          : null,
       productName: product?['name'] as String?,
       productImageUrl: product?['image_urls'] != null &&
               (product!['image_urls'] as List).isNotEmpty
@@ -81,6 +110,13 @@ class DisputeModel {
           : null,
       orderAmount: order?['total_amount'] != null
           ? (order!['total_amount'] as num).toDouble()
+          : null,
+      buyerName: buyer?['full_name'] as String?,
+      buyerEmail: buyer?['email'] as String?,
+      sellerName: seller?['business_name'] as String? ?? seller?['full_name'] as String?,
+      sellerEmail: seller?['email'] as String?,
+      deliveryAddress: deliveryAddr != null
+          ? '${deliveryAddr['address_line']}, ${deliveryAddr['city']}, ${deliveryAddr['state']}'
           : null,
     );
   }
@@ -103,6 +139,7 @@ class DisputeModel {
       'resolved_at': resolvedAt?.toIso8601String(),
       'created_at': createdAt.toIso8601String(),
       'updated_at': updatedAt?.toIso8601String(),
+      'dispute_number': disputeNumber,
     };
   }
 
@@ -117,44 +154,28 @@ class DisputeModel {
   bool get isMediumPriority => priority == 'medium';
   bool get isHighPriority => priority == 'high';
 
-  // Display text
   String get statusDisplayText {
     switch (status) {
-      case 'open':
-        return 'Open';
-      case 'under_review':
-        return 'Under Review';
-      case 'resolved':
-        return 'Resolved';
-      case 'closed':
-        return 'Closed';
-      default:
-        return 'Unknown';
+      case 'open': return 'Open';
+      case 'under_review': return 'Under Review';
+      case 'resolved': return 'Resolved';
+      case 'closed': return 'Closed';
+      default: return 'Unknown';
     }
   }
 
   String get reasonDisplayText {
     switch (disputeReason) {
-      case 'product_not_received':
-        return 'Product Not Received';
-      case 'wrong_item_received':
-        return 'Wrong Item Received';
-      case 'damaged_item':
-        return 'Damaged Item';
-      case 'fake_counterfeit':
-        return 'Fake/Counterfeit Product';
-      case 'seller_not_shipping':
-        return 'Seller Not Shipping';
-      case 'buyer_not_confirming':
-        return 'Buyer Not Confirming Delivery';
-      case 'payment_issue':
-        return 'Payment Issue';
-      case 'refund_not_received':
-        return 'Refund Not Received';
-      case 'other':
-        return 'Other Issue';
-      default:
-        return disputeReason;
+      case 'product_not_received': return 'Product Not Received';
+      case 'wrong_item_received': return 'Wrong Item Received';
+      case 'damaged_item': return 'Damaged Item';
+      case 'fake_counterfeit': return 'Fake/Counterfeit Product';
+      case 'seller_not_shipping': return 'Seller Not Shipping';
+      case 'buyer_not_confirming': return 'Buyer Not Confirming Delivery';
+      case 'payment_issue': return 'Payment Issue';
+      case 'refund_not_received': return 'Refund Not Received';
+      case 'other': return 'Other Issue';
+      default: return disputeReason;
     }
   }
 
@@ -167,15 +188,10 @@ class DisputeModel {
   }
 
   String get timeAgo {
-    final difference = DateTime.now().difference(createdAt);
-    if (difference.inDays > 0) {
-      return '${difference.inDays} day${difference.inDays > 1 ? 's' : ''} ago';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours} hour${difference.inHours > 1 ? 's' : ''} ago';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes} minute${difference.inMinutes > 1 ? 's' : ''} ago';
-    } else {
-      return 'Just now';
-    }
+    final diff = DateTime.now().difference(createdAt);
+    if (diff.inDays > 0) return '${diff.inDays} day${diff.inDays > 1 ? 's' : ''} ago';
+    if (diff.inHours > 0) return '${diff.inHours} hour${diff.inHours > 1 ? 's' : ''} ago';
+    if (diff.inMinutes > 0) return '${diff.inMinutes} min${diff.inMinutes > 1 ? 's' : ''} ago';
+    return 'Just now';
   }
 }

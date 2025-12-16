@@ -6,7 +6,7 @@ import '../services/cart_service.dart';
 import '../services/auth_service.dart';
 import '../models/cart_model.dart';
 import '../models/product_model.dart';
-import '../screens/checkout_address_screen.dart';
+import '../screens/checkout_address_screen.dart'; // NAVIGATE TO ADDRESS FIRST
 import '../screens/product_details_screen.dart';
 import '../widgets/unihub_loading_widget.dart';
 
@@ -59,34 +59,34 @@ class CartScreenState extends State<CartScreen> {
   }
 
   void _setupCartListener() {
-  final userId = _authService.currentUserId;
-  if (userId == null) return;
+    final userId = _authService.currentUserId;
+    if (userId == null) return;
 
-  _cartChannel = _supabase
-      .channel('cart:$userId')
-      .onPostgresChanges(
-        event: PostgresChangeEvent.insert,
-        schema: 'public',
-        table: 'cart',  // ← CHANGE FROM 'cart_items' TO 'cart'
-        filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'user_id', value: userId),
-        callback: (payload) => _handleCartInsert(payload.newRecord),
-      )
-      .onPostgresChanges(
-        event: PostgresChangeEvent.update,
-        schema: 'public',
-        table: 'cart',  // ← CHANGE FROM 'cart_items' TO 'cart'
-        filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'user_id', value: userId),
-        callback: (payload) => _handleCartUpdate(payload.newRecord),
-      )
-      .onPostgresChanges(
-        event: PostgresChangeEvent.delete,
-        schema: 'public',
-        table: 'cart',  // ← CHANGE FROM 'cart_items' TO 'cart'
-        filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'user_id', value: userId),
-        callback: (payload) => _handleCartDelete(payload.oldRecord),
-      )
-      .subscribe();
-}
+    _cartChannel = _supabase
+        .channel('cart:$userId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'cart',
+          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'user_id', value: userId),
+          callback: (payload) => _handleCartInsert(payload.newRecord),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'cart',
+          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'user_id', value: userId),
+          callback: (payload) => _handleCartUpdate(payload.newRecord),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.delete,
+          schema: 'public',
+          table: 'cart',
+          filter: PostgresChangeFilter(type: PostgresChangeFilterType.eq, column: 'user_id', value: userId),
+          callback: (payload) => _handleCartDelete(payload.oldRecord),
+        )
+        .subscribe();
+  }
 
   Future<void> _handleCartInsert(Map<String, dynamic> newRecord) async {
     final cartItemId = newRecord['id'] as String;
@@ -342,32 +342,31 @@ class CartScreenState extends State<CartScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-  backgroundColor: Colors.white,
-  elevation: 0,
-  automaticallyImplyLeading: false,
-  title: ShaderMask(
-    shaderCallback: (bounds) => kOrangeGradient.createShader(bounds),
-    child: const Text(
-      'Cart',
-      style: TextStyle(
-        color: Colors.white,
-        fontSize: 20,
-        fontWeight: FontWeight.bold,
-        letterSpacing: -0.3,
-      ),
-    ),
-  ),
-  centerTitle: false,
-  actions: _cartItems.isNotEmpty
-      ? [
-          IconButton(
-            icon: Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 22),
-            onPressed: clearCart,
+        backgroundColor: Colors.white,
+        elevation: 0,
+        automaticallyImplyLeading: false,
+        title: ShaderMask(
+          shaderCallback: (bounds) => kOrangeGradient.createShader(bounds),
+          child: const Text(
+            'Cart',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              letterSpacing: -0.3,
+            ),
           ),
-        ]
-      : null,
-),
-
+        ),
+        centerTitle: false,
+        actions: _cartItems.isNotEmpty
+            ? [
+                IconButton(
+                  icon: Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 22),
+                  onPressed: clearCart,
+                ),
+              ]
+            : null,
+      ),
       body: RefreshIndicator(
         onRefresh: loadCartItems,
         color: Color(0xFFFF6B35),
@@ -378,9 +377,7 @@ class CartScreenState extends State<CartScreen> {
   }
 
   Widget _buildLoader() {
-    return Center(
-      child: UniHubLoader(size: 80),
-    );
+    return Center(child: UniHubLoader(size: 80));
   }
 
   Widget _buildEmptyCart() {
@@ -518,11 +515,7 @@ class CartScreenState extends State<CartScreen> {
                             width: 32,
                             alignment: Alignment.center,
                             child: isUpdating
-                                ? SizedBox(
-                                    width: 14, 
-                                    height: 14, 
-                                    child: UniHubLoader(size: 14, backgroundColor: Colors.transparent)
-                                  )
+                                ? SizedBox(width: 14, height: 14, child: UniHubLoader(size: 14, backgroundColor: Colors.transparent))
                                 : Text('${item.quantity}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                           ),
                           _buildQtyButton(Icons.add, item.quantity < product.stockQuantity && !isUpdating ? () => _updateQuantity(item, item.quantity + 1) : null),
@@ -667,9 +660,10 @@ class CartScreenState extends State<CartScreen> {
               child: ElevatedButton(
                 onPressed: _canCheckout && !_isProcessing
                     ? () {
-                          final selectedItems = _cartItems.where((i) => _selectedItemIds.contains(i.id)).toList();
-                          final payments = Map<String, String>.from(_selectedPaymentMethods)..removeWhere((k, _) => !_selectedItemIds.contains(k));
-                          Navigator.push(context, MaterialPageRoute(builder: (context) => CheckoutAddressScreen(selectedItems: selectedItems, paymentMethods: payments)));
+                        final selectedItems = _cartItems.where((i) => _selectedItemIds.contains(i.id)).toList();
+                        final payments = Map<String, String>.from(_selectedPaymentMethods)..removeWhere((k, _) => !_selectedItemIds.contains(k));
+                        // NAVIGATE TO ADDRESS FIRST
+                        Navigator.push(context, MaterialPageRoute(builder: (context) => CheckoutAddressScreen(selectedItems: selectedItems, paymentMethods: payments)));
                       }
                     : null,
                 style: ElevatedButton.styleFrom(
@@ -679,17 +673,8 @@ class CartScreenState extends State<CartScreen> {
                   elevation: 0,
                 ),
                 child: _isProcessing
-                    ? SizedBox(
-                        height: 24,
-                        width: 24,
-                        child: FittedBox(
-                            child: UniHubLoader(size: 24, backgroundColor: Colors.transparent),
-                        ),
-                      )
-                    : Text(
-                        _canCheckout ? 'Checkout (${_selectedItemIds.length})' : 'Select items & payment',
-                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white)
-                      ),
+                    ? SizedBox(height: 24, width: 24, child: FittedBox(child: UniHubLoader(size: 24, backgroundColor: Colors.transparent)))
+                    : Text(_canCheckout ? 'Checkout (${_selectedItemIds.length})' : 'Select items & payment', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white)),
               ),
             ),
           ],

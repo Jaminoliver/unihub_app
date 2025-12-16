@@ -7,13 +7,6 @@ import '../services/auth_service.dart';
 import '../widgets/unihub_loading_widget.dart';
 import 'order_details_screen.dart';
 
-// Theme constants matching profile screen
-const kOrangeGradient = LinearGradient(
-  colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)],
-  begin: Alignment.topLeft,
-  end: Alignment.bottomRight,
-);
-
 class OrdersScreen extends StatefulWidget {
   final int initialTab;
   final VoidCallback? onRefresh;
@@ -28,7 +21,8 @@ class OrdersScreen extends StatefulWidget {
   State<OrdersScreen> createState() => _OrdersScreenState();
 }
 
-class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
+class _OrdersScreenState extends State<OrdersScreen>
+    with SingleTickerProviderStateMixin, AutomaticKeepAliveClientMixin {
   final _orderService = OrderService();
   final _authService = AuthService();
   late TabController _tabController;
@@ -100,7 +94,10 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: AppColors.errorRed,
+          ),
         );
       }
     }
@@ -116,35 +113,33 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
         backgroundColor: Colors.white,
         elevation: 0,
         automaticallyImplyLeading: false,
-        title: ShaderMask(
-          shaderCallback: (bounds) => kOrangeGradient.createShader(bounds),
-          child: const Text(
-            'Orders',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              letterSpacing: -0.3,
-            ),
-          ),
+        title: Text(
+          'My Orders',
+          style: AppTextStyles.heading.copyWith(fontSize: 20),
         ),
         centerTitle: false,
-        shape: Border(
-          bottom: BorderSide(
-            color: Colors.grey.shade200,
-            width: 1,
+        bottom: PreferredSize(
+          preferredSize: Size.fromHeight(50),
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: AppColors.lightGrey, width: 1),
+              ),
+            ),
+            child: TabBar(
+              controller: _tabController,
+              labelColor: AppColors.primaryOrange,
+              unselectedLabelColor: AppColors.textLight,
+              indicatorColor: AppColors.primaryOrange,
+              indicatorWeight: 3,
+              labelStyle: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+              unselectedLabelStyle: TextStyle(fontSize: 15, fontWeight: FontWeight.w500),
+              tabs: [
+                _buildTab('Active', _activeOrders.length),
+                _buildTab('History', _completedOrders.length),
+              ],
+            ),
           ),
-        ),
-        bottom: TabBar(
-          controller: _tabController,
-          labelColor: Color(0xFFFF6B35),
-          unselectedLabelColor: Colors.grey,
-          indicatorColor: Color(0xFFFF6B35),
-          indicatorWeight: 3,
-          tabs: [
-            _buildTab('Active', _activeOrders.length),
-            _buildTab('History', _completedOrders.length),
-          ],
         ),
       ),
       body: _isLoading
@@ -154,12 +149,12 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
               children: [
                 RefreshIndicator(
                   onRefresh: _loadOrders,
-                  color: Color(0xFFFF6B35),
+                  color: AppColors.primaryOrange,
                   child: _buildOrdersList(_activeOrders, true),
                 ),
                 RefreshIndicator(
                   onRefresh: _loadOrders,
-                  color: Color(0xFFFF6B35),
+                  color: AppColors.primaryOrange,
                   child: _buildOrdersList(_completedOrders, false),
                 ),
               ],
@@ -174,11 +169,16 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
         children: [
           Text(label),
           if (count > 0) ...[
-            SizedBox(width: 6),
+            SizedBox(width: 8),
             Container(
-              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
-                color: label == 'Active' ? Color(0xFFFF6B35) : Colors.grey[400],
+                gradient: label == 'Active'
+                    ? LinearGradient(
+                        colors: [AppColors.primaryOrange, Color(0xFFFF8C42)],
+                      )
+                    : null,
+                color: label != 'Active' ? AppColors.textLight : null,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
@@ -201,31 +201,35 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
       return ListView(
         physics: AlwaysScrollableScrollPhysics(),
         children: [
-          SizedBox(height: MediaQuery.of(context).size.height * 0.3),
+          SizedBox(height: MediaQuery.of(context).size.height * 0.25),
           Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(
-                  isActive ? Icons.shopping_bag_outlined : Icons.history,
-                  size: 80,
-                  color: Colors.grey[400],
+                Container(
+                  padding: EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: AppColors.lightGrey.withOpacity(0.3),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    isActive ? Icons.shopping_bag_outlined : Icons.history,
+                    size: 64,
+                    color: AppColors.textLight,
+                  ),
                 ),
-                SizedBox(height: 16),
+                SizedBox(height: 20),
                 Text(
                   isActive ? 'No Active Orders' : 'No Order History',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.grey[700],
-                  ),
+                  style: AppTextStyles.heading.copyWith(fontSize: 18),
                 ),
                 SizedBox(height: 8),
                 Text(
                   isActive
                       ? 'Your active orders will appear here'
                       : 'Your completed orders will appear here',
-                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                  style: AppTextStyles.body.copyWith(fontSize: 14),
+                  textAlign: TextAlign.center,
                 ),
               ],
             ),
@@ -238,7 +242,22 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
       physics: AlwaysScrollableScrollPhysics(),
       padding: EdgeInsets.all(16),
       itemCount: orders.length,
-      itemBuilder: (context, index) => _buildOrderCard(orders[index]),
+      itemBuilder: (context, index) {
+        return TweenAnimationBuilder(
+          duration: Duration(milliseconds: 300 + (index * 50)),
+          tween: Tween<double>(begin: 0, end: 1),
+          curve: Curves.easeOut,
+          builder: (context, double value, child) {
+            return Transform.translate(
+              offset: Offset(0, 20 * (1 - value)),
+              child: Opacity(
+                opacity: value,
+                child: _buildOrderCard(orders[index]),
+              ),
+            );
+          },
+        );
+      },
     );
   }
 
@@ -251,187 +270,323 @@ class _OrdersScreenState extends State<OrdersScreen> with SingleTickerProviderSt
         ),
       ).then((_) => _loadOrders()),
       child: Container(
-        margin: EdgeInsets.only(bottom: 12),
-        padding: EdgeInsets.all(16),
+        margin: EdgeInsets.only(bottom: 14),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(16),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: Offset(0, 2),
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 12,
+              offset: Offset(0, 4),
             ),
           ],
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        order.orderNumber,
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
-                          fontFamily: 'monospace',
+            // Header
+            Container(
+              padding: EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppColors.lightGrey.withOpacity(0.3),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          order.orderNumber,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            fontFamily: 'monospace',
+                            color: AppColors.textDark,
+                          ),
                         ),
+                        SizedBox(height: 4),
+                        Text(
+                          '${order.createdAt.day}/${order.createdAt.month}/${order.createdAt.year}',
+                          style: TextStyle(fontSize: 11, color: AppColors.textLight),
+                        ),
+                      ],
+                    ),
+                  ),
+                  _buildStatusBadge(order),
+                ],
+              ),
+            ),
+            // Content
+            Padding(
+              padding: EdgeInsets.all(14),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: order.productImageUrl != null
+                            ? Image.network(
+                                order.productImageUrl!,
+                                width: 70,
+                                height: 70,
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => _placeholderImage(),
+                              )
+                            : _placeholderImage(),
                       ),
-                      SizedBox(height: 4),
-                      Text(
-                        '${order.createdAt.day}/${order.createdAt.month}/${order.createdAt.year}',
-                        style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+                      SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              order.productName ?? 'Product',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textDark,
+                              ),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            SizedBox(height: 8),
+                            Row(
+                              children: [
+                                Container(
+                                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.lightGrey.withOpacity(0.5),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    'Qty: ${order.quantity}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: AppColors.textDark,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(width: 8),
+                                _buildPaymentBadge(order.paymentMethod),
+                              ],
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
-                ),
-                _buildStatusBadge(order.orderStatus, order.statusDisplayText),
-              ],
-            ),
-            Divider(height: 20),
-            Row(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: order.productImageUrl != null
-                      ? Image.network(
-                          order.productImageUrl!,
-                          width: 60,
-                          height: 60,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => _placeholderImage(),
-                        )
-                      : _placeholderImage(),
-                ),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        order.productName ?? 'Product',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      SizedBox(height: 6),
-                      Row(
-                        children: [
-                          Text(
-                            'Qty: ${order.quantity}',
-                            style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                          ),
-                          SizedBox(width: 12),
-                          _buildPaymentBadge(order.paymentMethod),
+                  if (order.isShipped && !order.isDelivered) ...[
+                    SizedBox(height: 12),
+                    _buildShippingIndicator(),
+                  ],
+                  SizedBox(height: 12),
+                  Container(
+                    padding: EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          AppColors.primaryOrange.withOpacity(0.1),
+                          Color(0xFFFF8C42).withOpacity(0.05),
                         ],
                       ),
-                    ],
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Total Amount',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textLight,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                        Text(
+                          order.formattedTotal,
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.primaryOrange,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ),
-            Divider(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Total Amount',
-                      style: TextStyle(fontSize: 11, color: Colors.grey[600]),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      order.formattedTotal,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFFFF6B35),
-                      ),
-                    ),
-                  ],
-                ),
-                Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey[400]),
-              ],
+                ],
+              ),
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildShippingIndicator() {
+    return Container(
+      padding: EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF8B5CF6).withOpacity(0.1), Color(0xFF9333EA).withOpacity(0.05)],
+        ),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Color(0xFF8B5CF6).withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          TweenAnimationBuilder(
+            duration: Duration(seconds: 2),
+            tween: Tween<double>(begin: 0, end: 1),
+            builder: (context, double value, child) {
+              return Transform.translate(
+                offset: Offset(value * 10, 0),
+                child: Icon(
+                  Icons.local_shipping,
+                  size: 20,
+                  color: Color(0xFF8B5CF6),
+                ),
+              );
+            },
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'In Transit',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF8B5CF6),
+                  ),
+                ),
+                SizedBox(height: 2),
+                Text(
+                  'Your order is on the way',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppColors.textLight,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Icon(
+            Icons.arrow_forward_ios,
+            size: 14,
+            color: Color(0xFF8B5CF6),
+          ),
+        ],
       ),
     );
   }
 
   Widget _placeholderImage() {
     return Container(
-      width: 60,
-      height: 60,
+      width: 70,
+      height: 70,
       decoration: BoxDecoration(
-        color: Colors.grey[200],
-        borderRadius: BorderRadius.circular(8),
+        color: AppColors.lightGrey.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(12),
       ),
-      child: Icon(Icons.image, color: Colors.grey[400]),
+      child: Icon(Icons.image, color: AppColors.textLight, size: 32),
     );
   }
 
-  Widget _buildStatusBadge(String status, String displayText) {
-    final colors = {
-      'pending': [Colors.orange[50]!, Colors.orange[700]!],
-      'confirmed': [Colors.blue[50]!, Colors.blue[700]!],
-      'shipped': [Colors.purple[50]!, Colors.purple[700]!],
-      'delivered': [Colors.green[50]!, Colors.green[700]!],
-      'cancelled': [Colors.red[50]!, Colors.red[700]!],
+  Widget _buildStatusBadge(OrderModel order) {
+    final statusConfig = {
+      'pending': {
+        'colors': [Color(0xFFFFF7ED), Color(0xFFF59E0B)],
+        'icon': Icons.schedule,
+        'text': 'Pending',
+      },
+      'confirmed': {
+        'colors': [Color(0xFFEFF6FF), Color(0xFF3B82F6)],
+        'icon': Icons.check_circle,
+        'text': 'Processing',
+      },
+      'shipped': {
+        'colors': [Color(0xFFF3E8FF), Color(0xFF8B5CF6)],
+        'icon': Icons.local_shipping,
+        'text': 'Shipped',
+      },
+      'delivered': {
+        'colors': [Color(0xFFECFDF5), Color(0xFF10B981)],
+        'icon': Icons.done_all,
+        'text': 'Delivered',
+      },
+      'cancelled': {
+        'colors': [Color(0xFFFEF2F2), Color(0xFFEF4444)],
+        'icon': Icons.cancel,
+        'text': 'Cancelled',
+      },
+      'refunded': {
+        'colors': [Color(0xFFFEF2F2), Color(0xFFEF4444)],
+        'icon': Icons.money_off,
+        'text': 'Refunded',
+      },
     };
-    final color = colors[status] ?? [Colors.grey[200]!, Colors.grey[700]!];
-    
+
+    final config = statusConfig[order.orderStatus] ?? statusConfig['pending']!;
+    final colors = config['colors'] as List<Color>;
+    final icon = config['icon'] as IconData;
+    final text = config['text'] as String;
+
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color[0],
+        color: colors[0],
         borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: colors[1].withOpacity(0.3)),
       ),
-      child: Text(
-        displayText,
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.bold,
-          color: color[1],
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: colors[1]),
+          SizedBox(width: 6),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: colors[1],
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildPaymentBadge(String method) {
-    final colors = {
-      'full': Colors.green,
-      'half': Colors.orange,
-      'pod': Colors.blue,
+    final config = {
+      'full': {'color': AppColors.successGreen, 'label': 'Full'},
+      'half': {'color': AppColors.warningYellow, 'label': 'Half'},
+      'pod': {'color': AppColors.infoBlue, 'label': 'POD'},
     };
-    final labels = {
-      'full': 'Full',
-      'half': 'Half',
-      'pod': 'POD',
-    };
-    
+
+    final data = config[method] ?? config['full']!;
+    final color = data['color'] as Color;
+    final label = data['label'] as String;
+
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: (colors[method] ?? Colors.grey).withOpacity(0.1),
-        borderRadius: BorderRadius.circular(4),
+        color: color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(6),
+        border: Border.all(color: color.withOpacity(0.3)),
       ),
       child: Text(
-        labels[method] ?? method,
+        label,
         style: TextStyle(
           fontSize: 10,
           fontWeight: FontWeight.w600,
-          color: colors[method] ?? Colors.grey,
+          color: color,
         ),
       ),
     );

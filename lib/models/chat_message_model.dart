@@ -1,3 +1,4 @@
+
 enum MessageType {
   text,
   productCard,
@@ -5,11 +6,17 @@ enum MessageType {
   quickActions,
   error,
   loading,
+  orderSelection,      // For showing order cards to select
+  reasonChips,         // For dispute reason chips
+  imagePreview,        // For showing uploaded evidence
+  summaryCard,         // Final confirmation card
+  adminMessage,        // Admin replies in live chat
 }
 
 enum MessageSender {
   user,
   ai,
+  admin,              // For admin messages
 }
 
 class ChatMessageModel {
@@ -33,6 +40,13 @@ class ChatMessageModel {
     this.metadata,
   });
 
+  // Helper getters
+  bool get isAdmin => sender == MessageSender.admin;
+  bool get isUser => sender == MessageSender.user;
+  bool get isAI => sender == MessageSender.ai;
+
+  // ==================== EXISTING FACTORIES ====================
+  
   factory ChatMessageModel.text({
     required String id,
     required String content,
@@ -96,6 +110,83 @@ class ChatMessageModel {
       timestamp: DateTime.now(),
     );
   }
+
+  // ==================== NEW DISPUTE FACTORIES ====================
+
+  factory ChatMessageModel.orderSelection({
+    required String id,
+    required String content,
+    required List<dynamic> orders, // List of OrderModel
+  }) {
+    return ChatMessageModel(
+      id: id,
+      content: content,
+      sender: MessageSender.ai,
+      type: MessageType.orderSelection,
+      timestamp: DateTime.now(),
+      metadata: {'orders': orders},
+    );
+  }
+
+  factory ChatMessageModel.reasonChips({
+    required String id,
+    required String content,
+    required List<Map<String, String>> reasons,
+  }) {
+    return ChatMessageModel(
+      id: id,
+      content: content,
+      sender: MessageSender.ai,
+      type: MessageType.reasonChips,
+      timestamp: DateTime.now(),
+      metadata: {'reasons': reasons},
+    );
+  }
+
+  factory ChatMessageModel.imagePreview({
+    required String id,
+    required List<String> imagePaths,
+  }) {
+    return ChatMessageModel(
+      id: id,
+      content: '',
+      sender: MessageSender.user,
+      type: MessageType.imagePreview,
+      timestamp: DateTime.now(),
+      metadata: {'images': imagePaths},
+    );
+  }
+
+  factory ChatMessageModel.summaryCard({
+    required String id,
+    required Map<String, dynamic> disputeData,
+  }) {
+    return ChatMessageModel(
+      id: id,
+      content: 'Here\'s a summary of your dispute:',
+      sender: MessageSender.ai,
+      type: MessageType.summaryCard,
+      timestamp: DateTime.now(),
+      metadata: disputeData,
+    );
+  }
+
+  factory ChatMessageModel.adminMessage({
+    required String id,
+    required String content,
+    List<String>? attachments,
+  }) {
+    return ChatMessageModel(
+      id: id,
+      content: content,
+      sender: MessageSender.admin,
+      type: MessageType.adminMessage,
+      timestamp: DateTime.now(),
+      metadata: attachments != null ? {'attachments': attachments} : null,
+    );
+  }
+
+  // ==================== JSON SERIALIZATION ====================
 
   Map<String, dynamic> toJson() {
     return {

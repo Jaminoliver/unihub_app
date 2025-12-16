@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/user_model.dart';
+import '../models/address_model.dart';
 
 class ProfileService {
   final SupabaseClient _supabase = Supabase.instance.client;
@@ -26,7 +27,7 @@ class ProfileService {
       return UserModel.fromJson({
         ...response,
         'university_name': university?['name'],
-        'university_id': response['university_id'], // Pass the ID to the model
+        'university_id': response['university_id'],
       });
     } catch (e) {
       print('Error fetching user profile: $e');
@@ -42,7 +43,7 @@ class ProfileService {
           .select('*')
           .eq('user_id', userId)
           .eq('is_default', true)
-          .single();
+          .maybeSingle();
 
       return response;
     } catch (e) {
@@ -58,7 +59,7 @@ class ProfileService {
     String? phoneNumber,
     String? state,
     String? profileImageUrl,
-    String? universityId, // <-- ADDED
+    String? universityId,
   }) async {
     try {
       final updates = <String, dynamic>{
@@ -69,7 +70,7 @@ class ProfileService {
       if (phoneNumber != null) updates['phone_number'] = phoneNumber;
       if (state != null) updates['state'] = state;
       if (profileImageUrl != null) updates['profile_image_url'] = profileImageUrl;
-      if (universityId != null) updates['university_id'] = universityId; // <-- ADDED
+      if (universityId != null) updates['university_id'] = universityId;
 
       final response = await _supabase
           .from('profiles')
@@ -139,7 +140,7 @@ class ProfileService {
     }
   }
 
-  /// Update or create delivery address
+  /// Update or create delivery address (legacy method - kept for backward compatibility)
   Future<void> updateDeliveryAddress({
     required String userId,
     required String addressLine,
@@ -187,8 +188,6 @@ class ProfileService {
     }
   }
 
-  // --- NEW METHODS ---
-
   /// Fetch all states
   Future<List<String>> getStates() async {
     try {
@@ -217,6 +216,196 @@ class ProfileService {
     } catch (e) {
       print('Error fetching universities by state: $e');
       rethrow;
+    }
+  }
+
+  // ===================================================================
+  // ADDRESS MANAGEMENT METHODS (NEW)
+  // ===================================================================
+
+  /// Get all delivery addresses for a user
+  Future<List<DeliveryAddressModel>> getUserAddresses(String userId) async {
+    try {
+      final response = await _supabase
+          .from('delivery_addresses')
+          .select()
+          .eq('user_id', userId)
+          .order('is_default', ascending: false)
+          .order('created_at', ascending: false);
+
+      return (response as List)
+          .map((json) => DeliveryAddressModel.fromJson(json))
+          .toList();
+    } catch (e) {
+      print('Error fetching addresses: $e');
+      return [];
+    }
+  }
+
+  /// Get a specific delivery address by ID
+  Future<DeliveryAddressModel?> getAddressById(String addressId) async {
+    try {
+      final response = await _supabase
+          .from('delivery_addresses')
+          .select()
+          .eq('id', addressId)
+          .maybeSingle();
+
+      if (response == null) return null;
+      return DeliveryAddressModel.fromJson(response);
+    } catch (e) {
+      print('Error fetching address: $e');
+      return null;
+    }
+  }
+
+  /// Add a new delivery address
+  Future<DeliveryAddressModel> addDeliveryAddress({
+    required String userId,
+    required String addressLine,
+    required String city,
+    required String state,
+    String? landmark,
+    String? phoneNumber,
+    bool isDefault = false,
+  }) async {
+    try {
+      // If this is set as default, first set all others to non-default
+      if (isDefault) {
+        await _supabase
+            .from('delivery_addresses')
+            .update({'is_default': false})
+            .eq('user_id', userId);
+      }
+
+      final response = await _supabase
+          .from('delivery_addresses')
+          .insert({
+            'user_id': userId,
+            'address_line': addressLine,
+            'city': city,
+            'state': state,
+            'landmark': landmark,
+            'phone_number': phoneNumber,
+            'is_default': isDefault,
+            'created_at': DateTime.now().toIso8601String(),
+          })
+          .select()
+          .single();
+
+      return DeliveryAddressModel.fromJson(response);
+    } catch (e) {
+      print('Error adding address: $e');
+      rethrow;
+    }
+  }
+
+  /// Update an existing delivery address
+  Future<DeliveryAddressModel> updateAddress({
+    required String addressId,
+    required String userId,
+    String? addressLine,
+    String? city,
+    String? state,
+    String? landmark,
+    String? phoneNumber,
+    bool? isDefault,
+  }) async {
+    try {
+      // If this is being set as default, first set all others to non-default
+      if (isDefault == true) {
+        await _supabase
+            .from('delivery_addresses')
+            .update({'is_default': false})
+            .eq('user_id', userId);
+      }
+
+      final updates = <String, dynamic>{
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+
+      if (addressLine != null) updates['address_line'] = addressLine;
+      if (city != null) updates['city'] = city;
+      if (state != null) updates['state'] = state;
+      if (landmark != null) updates['landmark'] = landmark;
+      if (phoneNumber != null) updates['phone_number'] = phoneNumber;
+      if (isDefault != null) updates['is_default'] = isDefault;
+
+      final response = await _supabase
+          .from('delivery_addresses')
+          .update(updates)
+          .eq('id', addressId)
+          .select()
+          .single();
+
+      return DeliveryAddressModel.fromJson(response);
+    } catch (e) {
+      print('Error updating address: $e');
+      rethrow;
+    }
+  }
+
+  /// Set an address as default
+  Future<void> setDefaultAddress(String userId, String addressId) async {
+    try {
+      // First, set all addresses to non-default
+      await _supabase
+          .from('delivery_addresses')
+          .update({'is_default': false, 'updated_at': DateTime.now().toIso8601String()})
+          .eq('user_id', userId);
+
+      // Then set the selected address as default
+      await _supabase
+          .from('delivery_addresses')
+          .update({'is_default': true, 'updated_at': DateTime.now().toIso8601String()})
+          .eq('id', addressId);
+    } catch (e) {
+      print('Error setting default address: $e');
+      rethrow;
+    }
+  }
+
+  /// Delete an address
+  Future<void> deleteAddress(String addressId) async {
+    try {
+      await _supabase
+          .from('delivery_addresses')
+          .delete()
+          .eq('id', addressId);
+    } catch (e) {
+      print('Error deleting address: $e');
+      rethrow;
+    }
+  }
+
+  /// Check if user has any addresses
+  Future<bool> hasAddresses(String userId) async {
+    try {
+      final response = await _supabase
+          .from('delivery_addresses')
+          .select('id')
+          .eq('user_id', userId)
+          .limit(1);
+
+      return (response as List).isNotEmpty;
+    } catch (e) {
+      print('Error checking addresses: $e');
+      return false;
+    }
+  }
+
+  /// Get address count for user
+  Future<int> getAddressCount(String userId) async {
+    try {
+      final response = await _supabase
+          .from('delivery_addresses')
+          .select('id')
+          .eq('user_id', userId);
+
+      return (response as List).length;
+    } catch (e) {
+      print('Error getting address count: $e');
+      return 0;
     }
   }
 }
