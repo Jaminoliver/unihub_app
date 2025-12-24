@@ -1,6 +1,7 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/material.dart';
 import 'dart:io' show Platform;
 
 class PushNotificationService {
@@ -9,16 +10,40 @@ class PushNotificationService {
   String? _currentUserTopic;
 
   Future<void> init() async {
-    await _fcm.requestPermission(alert: true, badge: true, sound: true);
+    await _fcm.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+      criticalAlert: false,
+      provisional: false,
+    );
 
     final token = await _fcm.getToken();
     print('📱📱📱 NEW FCM TOKEN 📱📱📱');
     print(token);
     print('📱📱📱 END TOKEN 📱📱📱');
 
+    // Initialize local notifications - uses ic_launcher (your new U bag logo)
     const android = AndroidInitializationSettings('@mipmap/ic_launcher');
-    const ios = DarwinInitializationSettings();
-    await _localNotifications.initialize(InitializationSettings(android: android, iOS: ios));
+    const ios = DarwinInitializationSettings(
+      requestAlertPermission: true,
+      requestBadgePermission: true,
+      requestSoundPermission: true,
+    );
+    
+    await _localNotifications.initialize(
+      const InitializationSettings(android: android, iOS: ios),
+      onDidReceiveNotificationResponse: (NotificationResponse response) {
+        if (response.payload != null) {
+          _handleNotificationTap({'deep_link': response.payload});
+        }
+      },
+    );
+
+    // Create notification channels for Android
+    if (Platform.isAndroid) {
+      await _createNotificationChannels();
+    }
 
     // Save token immediately if user is logged in
     final currentUser = Supabase.instance.client.auth.currentUser;
@@ -31,7 +56,6 @@ class PushNotificationService {
       if (session != null && session.user != null) {
         _subscribeToUserTopic(session.user.id);
         
-        // Save token to database
         final newToken = await _fcm.getToken();
         if (newToken != null) {
           await _saveTokenToDatabase(session.user.id, newToken);
@@ -42,7 +66,6 @@ class PushNotificationService {
       }
     });
 
-    // Listen for token refresh
     _fcm.onTokenRefresh.listen((newToken) async {
       print('🔄 FCM Token refreshed: $newToken');
       final userId = Supabase.instance.client.auth.currentUser?.id;
@@ -89,6 +112,58 @@ class PushNotificationService {
     });
   }
 
+  Future<void> _createNotificationChannels() async {
+    // Orders channel - High priority with UniHub orange branding
+    const ordersChannel = AndroidNotificationChannel(
+      'unihub_orders',
+      'Orders',
+      description: 'Order updates and notifications',
+      importance: Importance.high,
+      playSound: true,
+      enableVibration: true,
+      showBadge: true,
+      ledColor: Color(0xFFFF6B35), // UniHub orange
+    );
+
+    // Messages channel - High priority
+    const messagesChannel = AndroidNotificationChannel(
+      'unihub_messages',
+      'Messages',
+      description: 'Chat and message notifications',
+      importance: Importance.high,
+      playSound: true,
+      enableVibration: true,
+      showBadge: true,
+      ledColor: Color(0xFFFF6B35),
+    );
+
+    // Promotions channel - Default priority
+    const promotionsChannel = AndroidNotificationChannel(
+      'unihub_promotions',
+      'Promotions',
+      description: 'Deals, offers and promotional notifications',
+      importance: Importance.defaultImportance,
+      playSound: true,
+      enableVibration: false,
+      showBadge: true,
+      ledColor: Color(0xFFFF6B35),
+    );
+
+    await _localNotifications
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(ordersChannel);
+
+    await _localNotifications
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(messagesChannel);
+
+    await _localNotifications
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(promotionsChannel);
+
+    print('✅ Notification channels created');
+  }
+
   Future<void> _saveTokenToDatabase(String userId, String token) async {
     try {
       final deviceType = Platform.isAndroid ? 'android' : Platform.isIOS ? 'ios' : 'web';
@@ -126,68 +201,38 @@ class PushNotificationService {
     print('📱 Raw data received: $data');
     print('📱 Data keys: ${data.keys.toList()}');
     
-    // Log each data field
     if (data.containsKey('campaign_id')) {
       print('📊 Campaign ID: ${data['campaign_id']}');
     }
     if (data.containsKey('deep_link')) {
       print('🔗 Deep Link: ${data['deep_link']}');
-      print('🔗 Deep Link Type: ${data['deep_link'].runtimeType}');
-      print('🔗 Deep Link isEmpty: ${data['deep_link'].toString().isEmpty}');
-    }
-    if (data.containsKey('title')) {
-      print('📝 Title: ${data['title']}');
-    }
-    if (data.containsKey('body')) {
-      print('📝 Body: ${data['body']}');
     }
     
-    // Track both opened and clicked
     if (data.containsKey('campaign_id')) {
       print('📊 Tracking notification analytics...');
       _trackNotificationOpened(data['campaign_id']);
       
-      // If has deep link, also track click
       if (data.containsKey('deep_link') && data['deep_link'].toString().isNotEmpty) {
         print('📊 Deep link exists, tracking click...');
         _trackNotificationClicked(data['campaign_id']);
-      } else {
-        print('📊 No deep link to track click');
       }
-    } else {
-      print('⚠️ No campaign_id found in data');
     }
     
-    print('ℹ️ Push notification handling complete');
-    print('ℹ️ User should navigate to notifications screen to see notification');
     print('📱 ========== PUSH NOTIFICATION TAP HANDLER END ==========');
   }
 
   Future<void> _trackNotificationOpened(String campaignId) async {
     try {
-      print('📊 Tracking notification opened for campaign: $campaignId');
-      
       final userId = Supabase.instance.client.auth.currentUser?.id;
-      if (userId == null) {
-        print('⚠️ No user ID, cannot track');
-        return;
-      }
-
-      print('📊 User ID: $userId');
-      print('📊 Updating notification_analytics table...');
+      if (userId == null) return;
 
       await Supabase.instance.client
           .from('notification_analytics')
-          .update({
-            'opened_at': DateTime.now().toIso8601String(),
-          })
+          .update({'opened_at': DateTime.now().toIso8601String()})
           .eq('campaign_id', campaignId)
           .eq('user_id', userId)
           .isFilter('opened_at', null);
 
-      print('📊 Calling increment_campaign_opened RPC...');
-
-      // Also update campaign stats
       await Supabase.instance.client.rpc(
         'increment_campaign_opened',
         params: {'campaign_uuid': campaignId}
@@ -201,29 +246,16 @@ class PushNotificationService {
 
   Future<void> _trackNotificationClicked(String campaignId) async {
     try {
-      print('📊 Tracking notification clicked for campaign: $campaignId');
-      
       final userId = Supabase.instance.client.auth.currentUser?.id;
-      if (userId == null) {
-        print('⚠️ No user ID, cannot track');
-        return;
-      }
-
-      print('📊 User ID: $userId');
-      print('📊 Updating notification_analytics table...');
+      if (userId == null) return;
 
       await Supabase.instance.client
           .from('notification_analytics')
-          .update({
-            'clicked_at': DateTime.now().toIso8601String(),
-          })
+          .update({'clicked_at': DateTime.now().toIso8601String()})
           .eq('campaign_id', campaignId)
           .eq('user_id', userId)
           .isFilter('clicked_at', null);
 
-      print('📊 Calling increment_campaign_clicked RPC...');
-
-      // Also update campaign stats
       await Supabase.instance.client.rpc(
         'increment_campaign_clicked',
         params: {'campaign_uuid': campaignId}
@@ -235,35 +267,70 @@ class PushNotificationService {
     }
   }
 
-  Future<void> _showLocalNotification(String title, String body, Map<String, dynamic> data) async {
+  Future<void> _showLocalNotification(
+    String title,
+    String body,
+    Map<String, dynamic> data,
+  ) async {
     print('📲 Showing local notification');
-    print('📲 Title: $title');
-    print('📲 Body: $body');
-    print('📲 Payload data: $data');
     
-    const androidDetails = AndroidNotificationDetails(
-      'unihub_orders',
-      'Orders',
-      channelDescription: 'Order notifications',
+    // Determine channel based on notification type
+    String channelId = 'unihub_orders';
+    String channelName = 'Orders';
+    
+    if (data.containsKey('type')) {
+      switch (data['type']) {
+        case 'message':
+        case 'chat':
+          channelId = 'unihub_messages';
+          channelName = 'Messages';
+          break;
+        case 'promotion':
+        case 'deal':
+          channelId = 'unihub_promotions';
+          channelName = 'Promotions';
+          break;
+      }
+    }
+    
+    final androidDetails = AndroidNotificationDetails(
+      channelId,
+      channelName,
+      channelDescription: 'UniHub notifications',
       importance: Importance.high,
       priority: Priority.high,
       showWhen: true,
+      color: const Color(0xFFFF6B35), // UniHub orange - tints the small icon
+      colorized: false,
+      // Small icon (status bar) - Android tints it orange automatically
+      icon: '@mipmap/ic_launcher',
+      // Large icon (notification drawer) - Your beautiful U bag logo with gradient!
+      largeIcon: const DrawableResourceAndroidBitmap('@mipmap/ic_launcher'),
+      styleInformation: const BigTextStyleInformation(
+        '',
+        contentTitle: '',
+        summaryText: 'UniHub',
+        htmlFormatContent: true,
+        htmlFormatContentTitle: true,
+      ),
     );
+    
     const iosDetails = DarwinNotificationDetails(
       presentAlert: true,
       presentBadge: true,
       presentSound: true,
+      badgeNumber: 1,
     );
     
     await _localNotifications.show(
       DateTime.now().millisecond,
       title,
       body,
-      const NotificationDetails(android: androidDetails, iOS: iosDetails),
+      NotificationDetails(android: androidDetails, iOS: iosDetails),
       payload: data['deep_link'],
     );
     
-    print('✅ Local notification shown');
+    print('✅ Local notification shown with UniHub branding');
   }
 
   Future<void> _subscribeToUserTopic(String userId) async {
@@ -273,8 +340,6 @@ class PushNotificationService {
       await _fcm.subscribeToTopic(topic);
       _currentUserTopic = topic;
       print('✅ Subscribed to: $topic');
-      final token = await _fcm.getToken();
-      print('📱 My FCM Token: $token');
     } catch (e) {
       print('❌ Subscribe error: $e');
     }

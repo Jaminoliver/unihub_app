@@ -180,26 +180,26 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen>
       context: context,
       barrierDismissible: false,
       builder: (context) => AlertDialog(
+        backgroundColor: AppColors.getCardBackground(context),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Row(
           children: [
-            Icon(Icons.error_outline, color: Colors.red, size: 24),
+            Icon(Icons.error_outline, color: AppColors.errorRed, size: 24),
             SizedBox(width: 8),
-            Text('Payment Failed', style: TextStyle(fontSize: 18)),
+            Text('Payment Failed', style: TextStyle(fontSize: 18, color: AppColors.getTextPrimary(context))),
           ],
         ),
-        content: Text(message, style: TextStyle(fontSize: 14)),
+        content: Text(message, style: TextStyle(fontSize: 14, color: AppColors.getTextMuted(context))),
         actions: [
           TextButton(
-           onPressed: () {
-  Navigator.of(context).pop(); // Only pops the AlertDialog
-},
-            child: Text('Back', style: TextStyle(color: Colors.grey[600])),
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text('Back', style: TextStyle(color: AppColors.getTextMuted(context))),
           ),
           ElevatedButton(
             onPressed: () => Navigator.of(context).pop(),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Color(0xFFFF6B35),
+              backgroundColor: AppColors.primaryOrange,
+              foregroundColor: Colors.white,
               elevation: 0,
             ),
             child: Text('Try Again'),
@@ -208,85 +208,6 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen>
       ),
     );
   }
-  
-  // --- START OF NEW WIDGET INSERTION ---
-  
-  /// Creates the consistent bottom bar with the total/escrow amount and action button.
-  Widget _buildBottomBar(bool requiresPayment, double amount) {
-    final label = requiresPayment ? 'Pay Now' : 'Total Amount';
-    final buttonText = requiresPayment ? 'Proceed' : 'Confirm';
-    final priceColor = Color(0xFFFF6B35); // Orange Color
-
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white, // <--- 1. SOLID WHITE BACKGROUND
-        border: Border(
-          top: BorderSide(color: Colors.grey.shade200), // Subtle separation line
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: Offset(0, -5),
-          ),
-        ],
-      ),
-      // Apply padding including the bottom safe area padding
-      padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.of(context).padding.bottom),
-      child: SafeArea(
-        top: false,
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 12, 
-                      color: priceColor, // <--- ORANGE LABEL
-                      fontWeight: FontWeight.w500
-                    ), 
-                  ),
-                  Text(
-                    _formatPrice(amount),
-                    style: TextStyle(
-                      fontSize: 18, 
-                      fontWeight: FontWeight.bold, 
-                      color: priceColor // <--- ORANGE PRICE
-                    ), 
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(width: 12),
-            ElevatedButton(
-              onPressed: _processCheckout, // Use your existing checkout function
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white, // <--- BUTTON BACKGROUND IS WHITE
-                foregroundColor: priceColor, // <--- BUTTON TEXT IS ORANGE
-                elevation: 0,
-                side: BorderSide(
-                  color: priceColor, // <--- BUTTON BORDER IS ORANGE (The "outlined" look)
-                  width: 1.5
-                ),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                padding: EdgeInsets.symmetric(horizontal: 32, vertical: 14),
-              ),
-              child: Text(
-                buttonText,
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-  
-  // --- END OF NEW WIDGET INSERTION ---
 
   @override
   Widget build(BuildContext context) {
@@ -299,25 +220,87 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen>
     return WillPopScope(
       onWillPop: () async => !_isProcessing,
       child: Scaffold(
-        backgroundColor: AppColors.background,
+        backgroundColor: AppColors.getBackground(context),
         appBar: AppBar(
-          backgroundColor: Colors.white,
+          backgroundColor: AppColors.getCardBackground(context),
           elevation: 0,
+          iconTheme: IconThemeData(color: AppColors.getTextPrimary(context)),
           leading: _isProcessing
               ? SizedBox.shrink()
               : IconButton(
-                  icon: Icon(Icons.arrow_back, color: Colors.black),
+                  icon: Icon(Icons.arrow_back),
                   onPressed: () => Navigator.pop(context),
                 ),
-          title: Text('Payment', style: AppTextStyles.heading.copyWith(fontSize: 18)),
+          title: Text('Payment', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.getTextPrimary(context))),
           centerTitle: true,
+          bottom: PreferredSize(
+            preferredSize: Size.fromHeight(1),
+            child: Divider(height: 1, color: AppColors.getBorder(context).withOpacity(0.3)),
+          ),
         ),
-        body: _isProcessing
-            ? _buildProcessingState()
-            : requiresPayment
-                ? _buildPaymentOptions(escrowAmount)
-                : _buildPODState(totalAmount),
+        body: Column(
+          children: [
+            Container(
+              color: AppColors.getCardBackground(context),
+              padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+              child: Row(
+                children: [
+                  _buildStep('Cart', true),
+                  _buildLine(true),
+                  _buildStep('Address', true),
+                  _buildLine(true),
+                  _buildStep('Review', true),
+                  _buildLine(true),
+                  _buildStep('Payment', true),
+                ],
+              ),
+            ),
+            Divider(height: 1, color: AppColors.getBorder(context).withOpacity(0.3)),
+
+            Expanded(
+              child: _isProcessing
+                  ? _buildProcessingState()
+                  : requiresPayment
+                      ? _buildPaymentOptions(escrowAmount)
+                      : _buildPODState(totalAmount),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+
+  Widget _buildStep(String label, bool active) {
+    return Expanded(
+      child: Column(
+        children: [
+          Container(
+            height: 3,
+            decoration: BoxDecoration(
+              color: active ? AppColors.primaryOrange : AppColors.getBorder(context).withOpacity(0.3),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          SizedBox(height: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: active ? AppColors.primaryOrange : AppColors.getTextMuted(context),
+              fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLine(bool active) {
+    return Container(
+      width: 8,
+      height: 3,
+      margin: EdgeInsets.only(bottom: 18),
+      color: active ? AppColors.primaryOrange : AppColors.getBorder(context).withOpacity(0.3),
     );
   }
 
@@ -326,11 +309,11 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen>
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          CircularProgressIndicator(color: Color(0xFFFF6B35)),
+          CircularProgressIndicator(color: AppColors.primaryOrange),
           SizedBox(height: 24),
-          Text(_currentStep, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+          Text(_currentStep, style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context))),
           SizedBox(height: 8),
-          Text('Please wait...', style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+          Text('Please wait...', style: TextStyle(fontSize: 13, color: AppColors.getTextMuted(context))),
         ],
       ),
     );
@@ -339,25 +322,25 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen>
   Widget _buildPaymentOptions(double escrowAmount) {
     return Column(
       children: [
-        // Tab Bar
         Container(
           margin: EdgeInsets.all(16),
           padding: EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: Colors.grey[100],
+            color: AppColors.getCardBackground(context),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: Colors.grey.shade200),
+            border: Border.all(color: AppColors.getBorder(context).withOpacity(0.3)),
           ),
           child: TabBar(
             controller: _tabController,
             indicator: BoxDecoration(
-              color: Colors.white,
+              color: AppColors.primaryOrange.withOpacity(0.1),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Color(0xFFFF6B35).withOpacity(0.3)),
+              border: Border.all(color: AppColors.primaryOrange.withOpacity(0.3)),
             ),
-            labelColor: Color(0xFFFF6B35),
-            unselectedLabelColor: Colors.grey[600],
+            labelColor: AppColors.primaryOrange,
+            unselectedLabelColor: AppColors.getTextMuted(context),
             labelStyle: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+            dividerColor: Colors.transparent,
             tabs: [
               Tab(child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.credit_card, size: 18), SizedBox(width: 6), Text('Card')])),
               Tab(child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(Icons.account_balance, size: 18), SizedBox(width: 6), Text('Transfer')])),
@@ -365,7 +348,6 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen>
           ),
         ),
 
-        // Tab Content
         Expanded(
           child: TabBarView(
             controller: _tabController,
@@ -392,9 +374,7 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen>
           ),
         ),
 
-        // --- START OF UPDATE 2 (Replaced Orange Gradient Bar) ---
         _buildBottomBar(true, escrowAmount),
-        // --- END OF UPDATE 2 ---
       ],
     );
   }
@@ -407,28 +387,28 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen>
           Container(
             padding: EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: AppColors.getCardBackground(context),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Color(0xFFFF6B35).withOpacity(0.3), width: 2),
+              border: Border.all(color: AppColors.primaryOrange.withOpacity(0.3), width: 1.5),
             ),
             child: Row(
               children: [
                 Container(
                   padding: EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Color(0xFFFF6B35).withOpacity(0.1),
+                    color: AppColors.primaryOrange.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(icon, size: 28, color: Color(0xFFFF6B35)),
+                  child: Icon(icon, size: 28, color: AppColors.primaryOrange),
                 ),
                 SizedBox(width: 14),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      Text(title, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.getTextPrimary(context))),
                       SizedBox(height: 2),
-                      Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+                      Text(subtitle, style: TextStyle(fontSize: 12, color: AppColors.getTextMuted(context))),
                     ],
                   ),
                 ),
@@ -437,7 +417,6 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen>
           ),
           SizedBox(height: 14),
           
-          // Escrow Protection Notice
           Container(
             padding: EdgeInsets.all(12),
             decoration: BoxDecoration(
@@ -458,7 +437,7 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen>
                 SizedBox(height: 6),
                 Text(
                   'Payment held securely until you confirm delivery with your 6-digit code. Auto-refund after 5 days if not delivered.',
-                  style: TextStyle(fontSize: 11, color: Colors.grey[700], height: 1.3),
+                  style: TextStyle(fontSize: 11, color: Color(0xFF92400E).withOpacity(0.8), height: 1.3),
                 ),
               ],
             ),
@@ -466,7 +445,6 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen>
           
           SizedBox(height: 10),
           
-          // Quick Info Chips
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -478,7 +456,6 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen>
             ],
           ),
           
-          // Paystack Notice (only for card payment)
           if (icon == Icons.credit_card) ...[
             SizedBox(height: 10),
             Container(
@@ -506,18 +483,19 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen>
           SizedBox(height: 14),
           
           ...features.map((f) => Container(
-            margin: EdgeInsets.only(bottom: 10),
-            padding: EdgeInsets.all(12),
+            margin: EdgeInsets.only(bottom: 1),
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: Colors.grey.shade200),
+              color: AppColors.getCardBackground(context),
+              border: Border(
+                bottom: BorderSide(color: AppColors.getBorder(context).withOpacity(0.3), width: 0.5),
+              ),
             ),
             child: Row(
               children: [
-                Icon(f['icon'] as IconData, color: Color(0xFFFF6B35), size: 18),
+                Icon(f['icon'] as IconData, color: AppColors.primaryOrange, size: 18),
                 SizedBox(width: 12),
-                Text(f['text'] as String, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500)),
+                Text(f['text'] as String, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.getTextPrimary(context))),
               ],
             ),
           )),
@@ -530,16 +508,16 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen>
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.getCardBackground(context),
         borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.grey.shade300),
+        border: Border.all(color: AppColors.getBorder(context).withOpacity(0.3)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 12, color: Colors.grey[700]),
+          Icon(icon, size: 12, color: AppColors.getTextMuted(context)),
           SizedBox(width: 6),
-          Text(text, style: TextStyle(fontSize: 10, color: Colors.grey[700], fontWeight: FontWeight.w500)),
+          Text(text, style: TextStyle(fontSize: 10, color: AppColors.getTextMuted(context), fontWeight: FontWeight.w500)),
         ],
       ),
     );
@@ -554,25 +532,32 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen>
             child: Column(
               children: [
                 SizedBox(height: 40),
-                Icon(Icons.delivery_dining, size: 80, color: Color(0xFF10B981)),
+                Container(
+                  padding: EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: AppColors.successGreen.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.delivery_dining, size: 60, color: AppColors.successGreen),
+                ),
                 SizedBox(height: 24),
-                Text('Pay on Delivery', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                Text('Pay on Delivery', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: AppColors.getTextPrimary(context))),
                 SizedBox(height: 8),
-                Text('You\'ll pay ${_formatPrice(amount)} when you receive', textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: Colors.grey[600])),
+                Text('You\'ll pay ${_formatPrice(amount)} when you receive', textAlign: TextAlign.center, style: TextStyle(fontSize: 14, color: AppColors.getTextMuted(context))),
                 SizedBox(height: 32),
                 Container(
                   padding: EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: AppColors.getCardBackground(context),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade200),
+                    border: Border.all(color: AppColors.getBorder(context).withOpacity(0.3)),
                   ),
                   child: Column(
                     children: [
                       _buildPODStep(Icons.check_circle, 'Order Confirmed', 'We\'ll prepare your order'),
-                      Divider(height: 32),
+                      Divider(height: 32, color: AppColors.getBorder(context).withOpacity(0.3)),
                       _buildPODStep(Icons.local_shipping, 'Item Delivered', 'Receive your items'),
-                      Divider(height: 32),
+                      Divider(height: 32, color: AppColors.getBorder(context).withOpacity(0.3)),
                       _buildPODStep(Icons.payments, 'Pay Cash', 'Pay the delivery agent'),
                     ],
                   ),
@@ -582,9 +567,7 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen>
           ),
         ),
         
-        // --- START OF UPDATE 3 (Replaced Green Gradient Bar) ---
         _buildBottomBar(false, amount),
-        // --- END OF UPDATE 3 ---
       ],
     );
   }
@@ -592,14 +575,14 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen>
   Widget _buildPODStep(IconData icon, String title, String description) {
     return Row(
       children: [
-        Icon(icon, color: Color(0xFF10B981), size: 28),
+        Icon(icon, color: AppColors.successGreen, size: 28),
         SizedBox(width: 16),
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
-              Text(description, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+              Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context))),
+              Text(description, style: TextStyle(fontSize: 12, color: AppColors.getTextMuted(context))),
             ],
           ),
         ),
@@ -607,18 +590,80 @@ class _CheckoutPaymentScreenState extends State<CheckoutPaymentScreen>
     );
   }
 
+  Widget _buildBottomBar(bool requiresPayment, double amount) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.getCardBackground(context),
+        border: Border(
+          top: BorderSide(color: AppColors.getBorder(context).withOpacity(0.3)),
+        ),
+      ),
+      padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.of(context).padding.bottom),
+      child: SafeArea(
+        top: false,
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    requiresPayment ? 'Pay Now' : 'Total Amount',
+                    style: TextStyle(
+                      fontSize: 12, 
+                      color: AppColors.primaryOrange,
+                      fontWeight: FontWeight.w500
+                    ), 
+                  ),
+                  Text(
+                    _formatPrice(amount),
+                    style: TextStyle(
+                      fontSize: 18, 
+                      fontWeight: FontWeight.bold, 
+                      color: AppColors.primaryOrange
+                    ), 
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(width: 12),
+            ElevatedButton(
+              onPressed: _processCheckout,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.getCardBackground(context),
+                foregroundColor: AppColors.primaryOrange,
+                elevation: 0,
+                side: BorderSide(
+                  color: AppColors.primaryOrange,
+                  width: 1.5
+                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: EdgeInsets.symmetric(horizontal: 32, vertical: 14),
+              ),
+              child: Text(
+                requiresPayment ? 'Proceed' : 'Confirm',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildSuccessScreen() {
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.getCardBackground(context),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.check_circle, size: 100, color: Color(0xFF10B981)),
+            Icon(Icons.check_circle, size: 100, color: AppColors.successGreen),
             SizedBox(height: 24),
-            Text('Order Confirmed!', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+            Text('Order Confirmed!', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.getTextPrimary(context))),
             SizedBox(height: 8),
-            Text('Redirecting...', style: TextStyle(fontSize: 14, color: Colors.grey[600])),
+            Text('Redirecting...', style: TextStyle(fontSize: 14, color: AppColors.getTextMuted(context))),
           ],
         ),
       ),

@@ -1,9 +1,9 @@
+// order_details_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/order_model.dart';
 import '../services/order_service.dart';
 import '../constants/app_colors.dart';
-import '../constants/app_text_styles.dart';
 import 'orders_screen.dart';
 import '../models/review_model.dart';
 import '../services/reviews_service.dart';
@@ -15,6 +15,12 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 
+const kOrangeGradient = LinearGradient(
+  colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)],
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+);
+
 class OrderDetailsScreen extends StatefulWidget {
   final String orderId;
   const OrderDetailsScreen({super.key, required this.orderId});
@@ -23,8 +29,7 @@ class OrderDetailsScreen extends StatefulWidget {
   State<OrderDetailsScreen> createState() => _OrderDetailsScreenState();
 }
 
-class _OrderDetailsScreenState extends State<OrderDetailsScreen>
-    with SingleTickerProviderStateMixin {
+class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
   final _orderService = OrderService();
   final _reviewService = ReviewService();
   final _authService = AuthService();
@@ -35,22 +40,11 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen>
   bool _isLoadingReview = false;
   bool _isTimelineExpanded = false;
   bool _isCodeVisible = false;
-  late AnimationController _animationController;
 
   @override
   void initState() {
     super.initState();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: Duration(milliseconds: 1500),
-    );
     _loadOrder();
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
   }
 
   Future<void> _loadOrder() async {
@@ -61,7 +55,6 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen>
         _order = order;
         _isLoading = false;
       });
-      _animationController.forward();
       if (_shouldShowReview) await _loadExistingReview();
     } catch (e) {
       setState(() => _isLoading = false);
@@ -142,16 +135,10 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen>
   void _showSnackBar(String message, {bool isError = true}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Row(
-          children: [
-            Icon(isError ? Icons.error_outline : Icons.check_circle, color: Colors.white, size: 20),
-            SizedBox(width: 12),
-            Expanded(child: Text(message)),
-          ],
-        ),
+        content: Text(message),
         backgroundColor: isError ? AppColors.errorRed : AppColors.successGreen,
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         margin: EdgeInsets.all(16),
       ),
     );
@@ -162,25 +149,21 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen>
     _showSnackBar('$label copied', isError: false);
   }
 
-  // Computed properties
   bool get _shouldShowReview => ['delivered', 'cancelled', 'refunded'].contains(_order?.orderStatus);
-  bool get _shouldShowDeliveryCode => _order?.deliveryCode != null && 
-      !_order!.isDelivered && 
-      _order!.orderStatus != 'cancelled' && 
-      _order!.orderStatus != 'refunded';
+  bool get _shouldShowDeliveryCode => _order?.deliveryCode != null && !_order!.isDelivered && _order!.orderStatus != 'cancelled' && _order!.orderStatus != 'refunded';
   bool get _shouldShowExpectedDelivery => !['delivered', 'cancelled', 'refunded'].contains(_order?.orderStatus);
   bool get _shouldShowTrackOrder => _order?.orderStatus == 'shipped';
 
   DateTime get _expectedDeliveryDate => _order!.createdAt.add(Duration(days: 5));
 
   String get _currentStatusText {
-  if (_order!.orderStatus == 'cancelled') return '⊗ Order Cancelled';
-  if (_order!.orderStatus == 'refunded') return '💰 Order Refunded';
-  if (_order!.isDelivered) return '✓ Order Delivered';
-  if (_order!.isShipped) return '🚚 Package in Transit';
-  if (_order!.orderStatus == 'confirmed') return '📦 Preparing Your Order';
-  return '📋 Order Placed';
-}
+    if (_order!.orderStatus == 'cancelled') return 'Order Cancelled';
+    if (_order!.orderStatus == 'refunded') return 'Order Refunded';
+    if (_order!.isDelivered) return 'Order Delivered';
+    if (_order!.isShipped) return 'Package in Transit';
+    if (_order!.orderStatus == 'confirmed') return 'Preparing Your Order';
+    return 'Order Placed';
+  }
 
   int get _progressPercentage {
     if (['cancelled', 'refunded', 'delivered'].contains(_order!.orderStatus)) return 100;
@@ -193,7 +176,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen>
     bool wasShipped = _order!.isShipped || _order!.isDelivered;
     List<Map<String, dynamic>> steps = [
       {'title': 'Order Placed', 'subtitle': DateFormat('E, d MMM').format(_order!.createdAt), 'isCompleted': true, 'icon': Icons.shopping_bag, 'color': AppColors.successGreen},
-      {'title': 'Seller Notified', 'subtitle': 'Seller informed', 'isCompleted': true, 'icon': Icons.notifications_active, 'color': AppColors.infoBlue},
+      {'title': 'Confirmed', 'subtitle': 'Seller notified', 'isCompleted': true, 'icon': Icons.check_circle, 'color': AppColors.infoBlue},
     ];
 
     if (_order!.orderStatus == 'cancelled') {
@@ -217,30 +200,22 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.getBackground(context),
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.getCardBackground(context),
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: AppColors.textDark),
-          onPressed: () => Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(builder: (_) => OrdersScreen()),
-            (route) => route.isFirst,
-          ),
+          icon: Icon(Icons.arrow_back, color: AppColors.getTextPrimary(context)),
+          onPressed: () => Navigator.pushAndRemoveUntil(context, MaterialPageRoute(builder: (_) => OrdersScreen()), (route) => route.isFirst),
         ),
-        title: Text('Order Details', style: AppTextStyles.heading.copyWith(fontSize: 18)),
+        title: ShaderMask(
+          shaderCallback: (bounds) => kOrangeGradient.createShader(bounds),
+          child: const Text('Order Details', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold, letterSpacing: -0.3)),
+        ),
         centerTitle: false,
       ),
       body: _isLoading
-          ? Center(child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CircularProgressIndicator(color: AppColors.primaryOrange),
-                SizedBox(height: 16),
-                Text('Loading order details...', style: AppTextStyles.body),
-              ],
-            ))
+          ? Center(child: CircularProgressIndicator(color: AppColors.primaryOrange))
           : _order == null
               ? _buildErrorState()
               : RefreshIndicator(
@@ -250,34 +225,16 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen>
                     padding: EdgeInsets.all(16),
                     children: [
                       _buildStatusBanner(),
-                      if (_shouldShowExpectedDelivery) ...[
-                        SizedBox(height: 12),
-                        _buildExpectedDeliveryCard(),
-                      ],
-                      if (_shouldShowTrackOrder) ...[
-                        SizedBox(height: 12),
-                        _buildTrackOrderButton(),
-                      ],
-                      SizedBox(height: 16),
+                      if (_shouldShowExpectedDelivery) ...[SizedBox(height: 8), _buildExpectedDelivery()],
+                      if (_shouldShowTrackOrder) ...[SizedBox(height: 8), _buildTrackButton()],
+                      SizedBox(height: 12),
                       _buildTimeline(),
-                      SizedBox(height: 16),
-                      _buildProductCard(),
-                      SizedBox(height: 16),
-                      _buildOrderInfoCard(),
-                      SizedBox(height: 16),
-                      _buildDeliveryAddressCard(),
-                      SizedBox(height: 16),
-                      _buildPaymentCard(),
-                      SizedBox(height: 16),
-                      _buildReceiptButton(),
-                      if (_shouldShowDeliveryCode) ...[
-                        SizedBox(height: 16),
-                        _buildDeliveryCodeCard(),
-                      ],
-                      if (_shouldShowReview) ...[
-                        SizedBox(height: 16),
-                        _buildReviewSection(),
-                      ],
+                      SizedBox(height: 12),
+                      _buildProductSection(),
+                      SizedBox(height: 12),
+                      _buildInfoSection(),
+                      if (_shouldShowDeliveryCode) ...[SizedBox(height: 12), _buildDeliveryCode()],
+                      if (_shouldShowReview) ...[SizedBox(height: 12), _buildReviewSection()],
                       SizedBox(height: 32),
                     ],
                   ),
@@ -286,299 +243,245 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen>
   }
 
   Widget _buildErrorState() => Center(
-        child: Padding(
-          padding: EdgeInsets.all(32),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Container(
-                padding: EdgeInsets.all(24),
-                decoration: BoxDecoration(color: AppColors.errorRed.withOpacity(0.1), shape: BoxShape.circle),
-                child: Icon(Icons.error_outline, size: 64, color: AppColors.errorRed),
-              ),
-              SizedBox(height: 24),
-              Text('Order not found', style: AppTextStyles.heading.copyWith(fontSize: 18)),
-              SizedBox(height: 8),
-              Text('This order could not be loaded', style: AppTextStyles.body, textAlign: TextAlign.center),
-            ],
-          ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              padding: EdgeInsets.all(20),
+              decoration: BoxDecoration(color: AppColors.errorRed.withOpacity(0.1), shape: BoxShape.circle),
+              child: Icon(Icons.error_outline, size: 48, color: AppColors.errorRed),
+            ),
+            SizedBox(height: 16),
+            Text('Order not found', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context))),
+            SizedBox(height: 6),
+            Text('This order could not be loaded', style: TextStyle(fontSize: 13, color: AppColors.getTextMuted(context))),
+          ],
         ),
       );
 
   Widget _buildStatusBanner() {
     final configs = {
-      'pending': [Color(0xFFFFF7ED), Color(0xFFF59E0B), Icons.schedule, 'Pending'],
-      'confirmed': [Color(0xFFEFF6FF), Color(0xFF3B82F6), Icons.check_circle, 'Processing'],
-      'shipped': [Color(0xFFF3E8FF), Color(0xFF8B5CF6), Icons.local_shipping, 'Shipped'],
-      'delivered': [Color(0xFFECFDF5), Color(0xFF10B981), Icons.done_all, 'Delivered'],
-      'cancelled': [Color(0xFFFEF2F2), Color(0xFFEF4444), Icons.cancel, 'Cancelled'],
-      'refunded': [Color(0xFFFEF2F2), Color(0xFFEF4444), Icons.money_off, 'Refunded'],
+      'pending': [Color(0xFFF59E0B), 'Pending', Icons.schedule],
+      'confirmed': [Color(0xFF3B82F6), 'Processing', Icons.check_circle],
+      'shipped': [Color(0xFF8B5CF6), 'Shipped', Icons.local_shipping],
+      'delivered': [Color(0xFF10B981), 'Delivered', Icons.done_all],
+      'cancelled': [Color(0xFFEF4444), 'Cancelled', Icons.cancel],
+      'refunded': [Color(0xFFEF4444), 'Refunded', Icons.money_off],
     };
     final config = configs[_order!.orderStatus] ?? configs['pending']!;
-    
-    return FadeTransition(
-      opacity: _animationController,
-      child: Container(
-        padding: EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: config[0] as Color,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: (config[1] as Color).withOpacity(0.3)),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: EdgeInsets.all(10),
-              decoration: BoxDecoration(color: config[1] as Color, shape: BoxShape.circle),
-              child: Icon(config[2] as IconData, color: Colors.white, size: 22),
+
+    return Container(
+      padding: EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: (config[0] as Color).withOpacity(0.1),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: (config[0] as Color).withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: EdgeInsets.all(8),
+            decoration: BoxDecoration(color: config[0] as Color, shape: BoxShape.circle),
+            child: Icon(config[2] as IconData, color: Colors.white, size: 18),
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(config[1] as String, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.getTextPrimary(context))),
+                Text(_order!.orderNumber, style: TextStyle(fontSize: 11, color: AppColors.getTextMuted(context), fontFamily: 'monospace')),
+              ],
             ),
-            SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(config[3] as String, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textDark)),
-                  SizedBox(height: 4),
-                  Text(_order!.orderNumber, style: TextStyle(fontSize: 11, color: AppColors.textLight, fontFamily: 'monospace')),
-                ],
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildExpectedDeliveryCard() => Container(
-        padding: EdgeInsets.all(14),
+  Widget _buildExpectedDelivery() => Container(
+        padding: EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: AppColors.infoBlue.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(8),
           border: Border.all(color: AppColors.infoBlue.withOpacity(0.3)),
         ),
         child: Row(
           children: [
-            Icon(Icons.local_shipping, color: AppColors.infoBlue, size: 20),
-            SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Expected Delivery', style: TextStyle(fontSize: 12, color: AppColors.textLight)),
-                  Text(DateFormat('E, d MMM yyyy').format(_expectedDeliveryDate), 
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textDark)),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
-
-  Widget _buildTrackOrderButton() => SizedBox(
-        width: double.infinity,
-        child: OutlinedButton.icon(
-          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TrackOrdersScreen())),
-          icon: Icon(Icons.map, size: 18),
-          label: Text('Track Order'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: AppColors.primaryOrange,
-            side: BorderSide(color: AppColors.primaryOrange, width: 1.5),
-            padding: EdgeInsets.symmetric(vertical: 14),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
-        ),
-      );
-
-  Widget _buildTimeline() => SlideTransition(
-        position: Tween<Offset>(begin: Offset(0, 0.1), end: Offset.zero).animate(CurvedAnimation(parent: _animationController, curve: Curves.easeOut)),
-        child: FadeTransition(
-          opacity: _animationController,
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: Offset(0, 2))],
-            ),
-            child: Column(
-              children: [
-                InkWell(
-                  onTap: () => setState(() => _isTimelineExpanded = !_isTimelineExpanded),
-                  child: Container(
-                    padding: EdgeInsets.all(16),
-                    child: Column(
-                      children: [
-                        Row(
-                          children: [
-                            Icon(Icons.timeline, color: AppColors.primaryOrange, size: 20),
-                            SizedBox(width: 10),
-                            Expanded(child: Text(_currentStatusText, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.textDark))),
-                            Icon(_isTimelineExpanded ? Icons.expand_less : Icons.expand_more, color: AppColors.textLight),
-                          ],
-                        ),
-                        SizedBox(height: 12),
-                        Stack(
-                          children: [
-                            Container(height: 6, decoration: BoxDecoration(color: AppColors.lightGrey.withOpacity(0.3), borderRadius: BorderRadius.circular(3))),
-                            FractionallySizedBox(
-                              widthFactor: _progressPercentage / 100,
-                              child: Container(height: 6, decoration: BoxDecoration(
-                                gradient: LinearGradient(colors: [AppColors.primaryOrange, Color(0xFFFF8C42)]),
-                                borderRadius: BorderRadius.circular(3),
-                              )),
-                            ),
-                          ],
-                        ),
-                        SizedBox(height: 8),
-                        Text('Tap to view details', style: TextStyle(fontSize: 11, color: AppColors.textLight)),
-                      ],
-                    ),
-                  ),
-                ),
-                if (_isTimelineExpanded) ...[
-                  Divider(height: 1),
-                  Padding(
-                    padding: EdgeInsets.all(16),
-                    child: Column(
-                      children: _timelineSteps.asMap().entries.map((entry) {
-                        final index = entry.key;
-                        final step = entry.value;
-                        return _buildTimelineStep(step, index == 0, index == _timelineSteps.length - 1);
-                      }).toList(),
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      );
-
-  Widget _buildTimelineStep(Map<String, dynamic> step, bool isFirst, bool isLast) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Column(
-          children: [
-            if (!isFirst) Container(width: 2, height: 20, color: step['isCompleted'] ? step['color'] : AppColors.lightGrey),
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: step['isCompleted'] ? step['color'] : AppColors.lightGrey.withOpacity(0.3),
-                shape: BoxShape.circle,
-                boxShadow: step['isCompleted'] ? [BoxShadow(color: (step['color'] as Color).withOpacity(0.3), blurRadius: 8, offset: Offset(0, 2))] : [],
-              ),
-              child: Icon(step['icon'], size: 18, color: step['isCompleted'] ? Colors.white : AppColors.textLight),
-            ),
-            if (!isLast) Container(width: 2, height: 24, color: step['isCompleted'] ? step['color'] : AppColors.lightGrey),
-          ],
-        ),
-        SizedBox(width: 12),
-        Expanded(
-          child: Padding(
-            padding: EdgeInsets.only(top: 6, bottom: isLast ? 0 : 16),
-            child: Column(
+            Icon(Icons.local_shipping, color: AppColors.infoBlue, size: 18),
+            SizedBox(width: 10),
+            Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(step['title'], style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: step['isCompleted'] ? AppColors.textDark : AppColors.textLight)),
-                SizedBox(height: 3),
-                Text(step['subtitle'], style: TextStyle(fontSize: 11, color: AppColors.textLight)),
+                Text('Expected Delivery', style: TextStyle(fontSize: 11, color: AppColors.getTextMuted(context))),
+                Text(DateFormat('E, d MMM yyyy').format(_expectedDeliveryDate), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context))),
               ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildProductCard() => _buildCard(
-        'Product Details',
-        Icons.shopping_bag,
-        Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: _order!.productImageUrl != null
-                  ? Image.network(_order!.productImageUrl!, width: 70, height: 70, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _placeholder())
-                  : _placeholder(),
-            ),
-            SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(_order!.productName ?? 'Product', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
-                  SizedBox(height: 6),
-                  _chip(Icons.inventory_2, 'Qty: ${_order!.quantity}'),
-                  if (_order!.selectedSize != null) ...[SizedBox(height: 4), _chip(Icons.straighten, 'Size: ${_order!.selectedSize}')],
-                  if (_order!.selectedColor != null) ...[SizedBox(height: 4), _chip(Icons.palette, 'Color: ${_order!.selectedColor}')],
-                  SizedBox(height: 6),
-                  Text(_order!.formattedTotal, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primaryOrange)),
-                ],
-              ),
             ),
           ],
         ),
       );
 
-  Widget _buildOrderInfoCard() => _buildCard(
-        'Order Information',
-        Icons.receipt_long,
-        Column(
+  Widget _buildTrackButton() => OutlinedButton.icon(
+        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TrackOrdersScreen())),
+        icon: Icon(Icons.map, size: 16),
+        label: Text('Track Order'),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: AppColors.primaryOrange,
+          side: BorderSide(color: AppColors.primaryOrange),
+          padding: EdgeInsets.symmetric(vertical: 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        ),
+      );
+
+  Widget _buildTimeline() => Container(
+        decoration: BoxDecoration(
+          color: AppColors.getCardBackground(context),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.getBorder(context).withOpacity(0.3), width: 0.5),
+        ),
+        child: Column(
           children: [
-            _infoRow('Order Number', _order!.orderNumber, Icons.confirmation_number, copyable: true),
-            Divider(height: 20),
-            _infoRow('Order Date', DateFormat('E, d MMM yyyy').format(_order!.createdAt), Icons.calendar_today),
-            Divider(height: 20),
-            _infoRow('Payment Method', {'full': 'Full Payment', 'half': 'Half Payment', 'pod': 'Pay on Delivery'}[_order!.paymentMethod] ?? _order!.paymentMethod, Icons.payment),
-            if (!(_order!.isCancelled && _order!.isPayOnDelivery)) ...[
-              Divider(height: 20),
-              _infoRow('Payment Status', _order!.paymentStatusDisplayText, Icons.account_balance_wallet, 
-                color: _order!.isPaymentCompleted ? AppColors.successGreen : AppColors.warningYellow),
+            InkWell(
+              onTap: () => setState(() => _isTimelineExpanded = !_isTimelineExpanded),
+              child: Padding(
+                padding: EdgeInsets.all(12),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.timeline, color: AppColors.primaryOrange, size: 18),
+                        SizedBox(width: 8),
+                        Expanded(child: Text(_currentStatusText, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context)))),
+                        Icon(_isTimelineExpanded ? Icons.expand_less : Icons.expand_more, color: AppColors.getTextMuted(context), size: 20),
+                      ],
+                    ),
+                    SizedBox(height: 10),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(2),
+                      child: LinearProgressIndicator(
+                        value: _progressPercentage / 100,
+                        backgroundColor: AppColors.getBorder(context).withOpacity(0.3),
+                        valueColor: AlwaysStoppedAnimation(AppColors.primaryOrange),
+                        minHeight: 4,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            if (_isTimelineExpanded) ...[
+              Divider(height: 1, color: AppColors.getBorder(context).withOpacity(0.3)),
+              Padding(
+                padding: EdgeInsets.all(12),
+                child: Column(
+                  children: _timelineSteps.asMap().entries.map((e) => _buildTimelineStep(e.value, e.key == _timelineSteps.length - 1)).toList(),
+                ),
+              ),
             ],
           ],
         ),
       );
 
-  Widget _buildDeliveryAddressCard() => _buildCard(
-        'Delivery Address',
-        Icons.location_on,
-        Text(_order!.deliveryAddress ?? 'Not provided', style: TextStyle(fontSize: 13, color: AppColors.textLight, height: 1.5)),
-      );
+  Widget _buildTimelineStep(Map<String, dynamic> step, bool isLast) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: isLast ? 0 : 12),
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: step['isCompleted'] ? step['color'] : AppColors.getBorder(context).withOpacity(0.3),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(step['icon'], size: 14, color: step['isCompleted'] ? Colors.white : AppColors.getTextMuted(context)),
+          ),
+          SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(step['title'], style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: step['isCompleted'] ? AppColors.getTextPrimary(context) : AppColors.getTextMuted(context))),
+                Text(step['subtitle'], style: TextStyle(fontSize: 11, color: AppColors.getTextMuted(context))),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
-  Widget _buildPaymentCard() => _buildCard(
-        'Payment Summary',
-        Icons.receipt,
-        Column(
+  Widget _buildProductSection() => _buildSection(
+        'Product',
+        Row(
           children: [
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Text('Order Total', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textDark)),
-              Text(_order!.formattedTotal, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primaryOrange)),
-            ]),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: _order!.productImageUrl != null
+                  ? Image.network(_order!.productImageUrl!, width: 50, height: 50, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _placeholder())
+                  : _placeholder(),
+            ),
+            SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(_order!.productName ?? 'Product', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context)), maxLines: 2, overflow: TextOverflow.ellipsis),
+                  SizedBox(height: 4),
+                  Text('Qty ${_order!.quantity}${_order!.selectedSize != null ? ' • Size: ${_order!.selectedSize}' : ''}${_order!.selectedColor != null ? ' • ${_order!.selectedColor}' : ''}', style: TextStyle(fontSize: 11, color: AppColors.getTextMuted(context))),
+                  SizedBox(height: 4),
+                  Text(_order!.formattedTotal, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.primaryOrange)),
+                ],
+              ),
+            ),
           ],
         ),
       );
 
-  Widget _buildReceiptButton() => SizedBox(
-        width: double.infinity,
-        child: OutlinedButton.icon(
-          onPressed: _generateReceipt,
-          icon: Icon(Icons.download, size: 18),
-          label: Text('Download Receipt'),
-          style: OutlinedButton.styleFrom(
-            foregroundColor: AppColors.textDark,
-            side: BorderSide(color: AppColors.lightGrey),
-            padding: EdgeInsets.symmetric(vertical: 14),
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          ),
+  Widget _buildInfoSection() => _buildSection(
+        'Order Info',
+        Column(
+          children: [
+            _infoRow('Order Number', _order!.orderNumber, copyable: true),
+            _divider(),
+            _infoRow('Order Date', DateFormat('E, d MMM yyyy').format(_order!.createdAt)),
+            _divider(),
+            _infoRow('Payment', {'full': 'Full Payment', 'half': 'Half Payment', 'pod': 'Pay on Delivery'}[_order!.paymentMethod] ?? _order!.paymentMethod),
+            if (!(_order!.isCancelled && _order!.isPayOnDelivery)) ...[
+              _divider(),
+              _infoRow('Status', _order!.paymentStatusDisplayText, color: _order!.isPaymentCompleted ? AppColors.successGreen : AppColors.warningYellow),
+            ],
+            _divider(),
+            _infoRow('Delivery', _order!.deliveryAddress ?? 'Not provided'),
+            _divider(),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text('Total', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context))),
+                Text(_order!.formattedTotal, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.primaryOrange)),
+              ],
+            ),
+            SizedBox(height: 12),
+            OutlinedButton.icon(
+              onPressed: _generateReceipt,
+              icon: Icon(Icons.download, size: 16),
+              label: Text('Download Receipt'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.getTextPrimary(context),
+                side: BorderSide(color: AppColors.getBorder(context)),
+                padding: EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              ),
+            ),
+          ],
         ),
       );
 
-  Widget _buildDeliveryCodeCard() => Container(
-        padding: EdgeInsets.all(16),
+  Widget _buildDeliveryCode() => Container(
+        padding: EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: AppColors.successGreen.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(10),
           border: Border.all(color: AppColors.successGreen.withOpacity(0.3)),
         ),
         child: Column(
@@ -586,42 +489,39 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen>
           children: [
             Row(
               children: [
-                Icon(Icons.lock, color: AppColors.successGreen, size: 20),
-                SizedBox(width: 10),
-                Expanded(child: Text('Your Delivery Code', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textDark))),
+                Icon(Icons.lock, color: AppColors.successGreen, size: 18),
+                SizedBox(width: 8),
+                Text('Delivery Code', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.getTextPrimary(context))),
               ],
             ),
+            SizedBox(height: 8),
+            Text('Share ONLY when you receive your item', style: TextStyle(fontSize: 11, color: AppColors.getTextMuted(context))),
             SizedBox(height: 10),
-            Container(
-              padding: EdgeInsets.all(10),
-              decoration: BoxDecoration(color: Colors.white.withOpacity(0.7), borderRadius: BorderRadius.circular(10)),
-              child: Text('Share ONLY when you receive your item', style: TextStyle(fontSize: 11, color: AppColors.textDark, fontWeight: FontWeight.w500)),
-            ),
-            SizedBox(height: 14),
             Row(
               children: [
                 Expanded(
                   child: Container(
-                    padding: EdgeInsets.symmetric(vertical: 12),
-                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10), border: Border.all(color: AppColors.successGreen.withOpacity(0.5))),
+                    padding: EdgeInsets.symmetric(vertical: 10),
+                    decoration: BoxDecoration(
+                      color: AppColors.getCardBackground(context),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppColors.successGreen.withOpacity(0.5)),
+                    ),
                     child: Center(
-                      child: Text(
-                        _isCodeVisible ? _order!.deliveryCode! : '●●●●●●',
-                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.successGreen, letterSpacing: _isCodeVisible ? 6 : 4),
-                      ),
+                      child: Text(_isCodeVisible ? _order!.deliveryCode! : '●●●●●●', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.successGreen, letterSpacing: _isCodeVisible ? 4 : 3)),
                     ),
                   ),
                 ),
-                SizedBox(width: 10),
+                SizedBox(width: 8),
                 IconButton(
                   onPressed: () => setState(() => _isCodeVisible = !_isCodeVisible),
-                  icon: Icon(_isCodeVisible ? Icons.visibility_off : Icons.visibility, color: AppColors.successGreen),
-                  style: IconButton.styleFrom(backgroundColor: Colors.white, padding: EdgeInsets.all(12)),
+                  icon: Icon(_isCodeVisible ? Icons.visibility_off : Icons.visibility, color: AppColors.successGreen, size: 18),
+                  style: IconButton.styleFrom(backgroundColor: AppColors.getCardBackground(context), padding: EdgeInsets.all(10)),
                 ),
                 IconButton(
                   onPressed: () => _copyToClipboard(_order!.deliveryCode!, 'Delivery code'),
-                  icon: Icon(Icons.copy, color: AppColors.successGreen),
-                  style: IconButton.styleFrom(backgroundColor: Colors.white, padding: EdgeInsets.all(12)),
+                  icon: Icon(Icons.copy, color: AppColors.successGreen, size: 18),
+                  style: IconButton.styleFrom(backgroundColor: AppColors.getCardBackground(context), padding: EdgeInsets.all(10)),
                 ),
               ],
             ),
@@ -630,43 +530,39 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen>
       );
 
   Widget _buildReviewSection() {
-    if (_isLoadingReview) return _buildCard('Review', Icons.star, Center(child: CircularProgressIndicator(color: AppColors.primaryOrange)));
+    if (_isLoadingReview) return _buildSection('Review', Center(child: CircularProgressIndicator(color: AppColors.primaryOrange, strokeWidth: 2)));
 
     if (_existingReview != null) {
-      return _buildCard(
+      return _buildSection(
         'Your Review',
-        Icons.check_circle,
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                ...List.generate(5, (i) => Icon(i < _existingReview!.ratingInt ? Icons.star : Icons.star_border, size: 20, color: AppColors.primaryOrange)),
+                ...List.generate(5, (i) => Icon(i < _existingReview!.ratingInt ? Icons.star : Icons.star_border, size: 16, color: AppColors.primaryOrange)),
                 if (_existingReview!.isVerifiedPurchase) ...[
-                  SizedBox(width: 8),
-                  Icon(Icons.verified, color: AppColors.successGreen, size: 14),
-                  SizedBox(width: 4),
-                  Text('Verified', style: TextStyle(fontSize: 11, color: AppColors.successGreen, fontWeight: FontWeight.w600)),
+                  SizedBox(width: 6),
+                  Icon(Icons.verified, color: AppColors.successGreen, size: 12),
+                  SizedBox(width: 3),
+                  Text('Verified', style: TextStyle(fontSize: 10, color: AppColors.successGreen, fontWeight: FontWeight.w600)),
                 ],
               ],
             ),
-            SizedBox(height: 10),
-            Text(_existingReview!.comment, style: TextStyle(fontSize: 13, color: AppColors.textDark, height: 1.4)),
             SizedBox(height: 8),
-            Text('Reviewed ${_existingReview!.timeAgo}', style: TextStyle(fontSize: 10, color: AppColors.textLight)),
-            SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: _showLeaveReviewDialog,
-                icon: Icon(Icons.edit, size: 16),
-                label: Text('Edit Review'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.primaryOrange,
-                  side: BorderSide(color: AppColors.primaryOrange),
-                  padding: EdgeInsets.symmetric(vertical: 12),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                ),
+            Text(_existingReview!.comment, style: TextStyle(fontSize: 13, color: AppColors.getTextPrimary(context), height: 1.4)),
+            SizedBox(height: 6),
+            Text('Reviewed ${_existingReview!.timeAgo}', style: TextStyle(fontSize: 10, color: AppColors.getTextMuted(context))),
+            SizedBox(height: 10),
+            OutlinedButton.icon(
+              onPressed: _showLeaveReviewDialog,
+              icon: Icon(Icons.edit, size: 14),
+              label: Text('Edit Review'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppColors.primaryOrange,
+                side: BorderSide(color: AppColors.primaryOrange),
+                padding: EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
               ),
             ),
           ],
@@ -674,25 +570,21 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen>
       );
     }
 
-    return _buildCard(
+    return _buildSection(
       'Rate Your Experience',
-      Icons.star_outline,
       Column(
         children: [
-          Text('How satisfied are you with this product?', style: TextStyle(fontSize: 13, color: AppColors.textLight), textAlign: TextAlign.center),
-          SizedBox(height: 14),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _showLeaveReviewDialog,
-              icon: Icon(Icons.rate_review, size: 18),
-              label: Text('Leave Review', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primaryOrange,
-                foregroundColor: Colors.white,
-                padding: EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              ),
+          Text('How satisfied are you with this product?', style: TextStyle(fontSize: 13, color: AppColors.getTextMuted(context))),
+          SizedBox(height: 10),
+          ElevatedButton.icon(
+            onPressed: _showLeaveReviewDialog,
+            icon: Icon(Icons.rate_review, size: 16),
+            label: Text('Leave Review', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.primaryOrange,
+              foregroundColor: Colors.white,
+              padding: EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
           ),
         ],
@@ -700,49 +592,48 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen>
     );
   }
 
-  Widget _buildCard(String title, IconData icon, Widget child) => Container(
-        padding: EdgeInsets.all(16),
+  Widget _buildSection(String title, Widget child) => Container(
+        padding: EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: Offset(0, 2))],
+          color: AppColors.getCardBackground(context),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppColors.getBorder(context).withOpacity(0.3), width: 0.5),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(children: [Icon(icon, color: AppColors.primaryOrange, size: 20), SizedBox(width: 10), Text(title, style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.textDark))]),
-            SizedBox(height: 14),
+            Text(title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.getTextPrimary(context))),
+            SizedBox(height: 10),
             child,
           ],
         ),
       );
 
-  Widget _infoRow(String label, String value, IconData icon, {bool copyable = false, Color? color}) => Row(
-        children: [
-          Icon(icon, size: 16, color: AppColors.textLight),
-          SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label, style: TextStyle(fontSize: 11, color: AppColors.textLight)),
-                SizedBox(height: 2),
-                Text(value, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: color ?? AppColors.textDark)),
-              ],
+  Widget _infoRow(String label, String value, {bool copyable = false, Color? color}) => Padding(
+        padding: EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label, style: TextStyle(fontSize: 11, color: AppColors.getTextMuted(context))),
+                  SizedBox(height: 2),
+                  Text(value, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: color ?? AppColors.getTextPrimary(context))),
+                ],
+              ),
             ),
-          ),
-          if (copyable) IconButton(icon: Icon(Icons.copy, size: 16, color: AppColors.textLight), onPressed: () => _copyToClipboard(value, label), padding: EdgeInsets.zero, constraints: BoxConstraints()),
-        ],
+            if (copyable) IconButton(icon: Icon(Icons.copy, size: 16, color: AppColors.getTextMuted(context)), onPressed: () => _copyToClipboard(value, label), padding: EdgeInsets.zero, constraints: BoxConstraints()),
+          ],
+        ),
       );
 
-  Widget _chip(IconData icon, String text) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: AppColors.textLight),
-          SizedBox(width: 4),
-          Text(text, style: TextStyle(fontSize: 11, color: AppColors.textLight)),
-        ],
-      );
+  Widget _divider() => Divider(height: 16, color: AppColors.getBorder(context).withOpacity(0.3));
 
-  Widget _placeholder() => Container(width: 70, height: 70, decoration: BoxDecoration(color: AppColors.lightGrey.withOpacity(0.3), borderRadius: BorderRadius.circular(12)), child: Icon(Icons.image, color: AppColors.textLight, size: 32));
+  Widget _placeholder() => Container(
+        width: 50,
+        height: 50,
+        decoration: BoxDecoration(color: AppColors.getBackground(context), borderRadius: BorderRadius.circular(8), border: Border.all(color: AppColors.getBorder(context).withOpacity(0.3))),
+        child: Icon(Icons.image, color: AppColors.getTextMuted(context), size: 24),
+      );
 }

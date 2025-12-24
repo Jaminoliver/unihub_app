@@ -31,15 +31,13 @@ class _SearchScreenState extends State<SearchScreen> {
   List<ProductModel> _searchResults = [];
   List<String> _recentSearches = [];
   List<String> _suggestions = [];
-  List<String> _autocompleteResults = []; // ✅ NEW: For autocomplete
-  List<ProductModel> _allProducts =
-      []; // ✅ NEW: Store all products for autocomplete
+  List<String> _autocompleteResults = [];
 
   bool _isLoading = false;
   bool _hasSearched = false;
   String _currentSearchQuery = '';
-  bool _showAutocomplete = false; // ✅ NEW: Show/hide autocomplete
-  bool _isLoadingAutocomplete = false; // ✅ NEW: Loading state for autocomplete
+  bool _showAutocomplete = false;
+  bool _isLoadingAutocomplete = false;
 
   final Set<String> _favorites = {};
   final Set<String> _cart = {};
@@ -61,7 +59,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   void _onFocusChange() {
     if (_searchFocusNode.hasFocus && !_hasSearched) {
-      setState(() {}); // Rebuild to show suggestions/history
+      setState(() {});
     }
   }
 
@@ -129,50 +127,47 @@ class _SearchScreenState extends State<SearchScreen> {
     }
   }
 
-  // ✅ NEW: Autocomplete function
   Future<void> _handleTextChange(String query) async {
-  if (query.trim().isEmpty) {
+    if (query.trim().isEmpty) {
+      setState(() {
+        _showAutocomplete = false;
+        _autocompleteResults = [];
+      });
+      return;
+    }
+
     setState(() {
-      _showAutocomplete = false;
-      _autocompleteResults = [];
+      _showAutocomplete = true;
+      _isLoadingAutocomplete = true;
     });
-    return;
+
+    try {
+      final suggestions = await _productService.getSearchSuggestions(
+        partialQuery: query,
+        state: widget.state,
+        universityId: widget.universityId,
+        limit: 8,
+      );
+
+      final matchingRecent = _recentSearches
+          .where((search) =>
+              search.toLowerCase().contains(query.toLowerCase()) &&
+              !suggestions.contains(search))
+          .take(3)
+          .toList();
+
+      setState(() {
+        _autocompleteResults = [...suggestions, ...matchingRecent];
+        _isLoadingAutocomplete = false;
+      });
+    } catch (e) {
+      debugPrint('Error loading autocomplete: $e');
+      setState(() {
+        _autocompleteResults = [];
+        _isLoadingAutocomplete = false;
+      });
+    }
   }
-
-  setState(() {
-    _showAutocomplete = true;
-    _isLoadingAutocomplete = true;
-  });
-
-  try {
-    // ✅ Call the NEW method from ProductService
-    final suggestions = await _productService.getSearchSuggestions(
-      partialQuery: query,
-      state: widget.state,
-      universityId: widget.universityId,
-      limit: 8,
-    );
-
-    // Also include matching recent searches
-    final matchingRecent = _recentSearches
-        .where((search) =>
-            search.toLowerCase().contains(query.toLowerCase()) &&
-            !suggestions.contains(search))
-        .take(3)
-        .toList();
-
-    setState(() {
-      _autocompleteResults = [...suggestions, ...matchingRecent];
-      _isLoadingAutocomplete = false;
-    });
-  } catch (e) {
-    debugPrint('Error loading autocomplete: $e');
-    setState(() {
-      _autocompleteResults = [];
-      _isLoadingAutocomplete = false;
-    });
-  }
-}
 
   Future<void> _performSearch(String query) async {
     if (query.trim().isEmpty) return;
@@ -181,7 +176,7 @@ class _SearchScreenState extends State<SearchScreen> {
       _isLoading = true;
       _hasSearched = true;
       _currentSearchQuery = query;
-      _showAutocomplete = false; // Hide autocomplete when searching
+      _showAutocomplete = false;
     });
 
     await _saveRecentSearch(query);
@@ -206,9 +201,6 @@ class _SearchScreenState extends State<SearchScreen> {
       });
     }
   }
-  
-  
-
 
   void _clearSearch() {
     setState(() {
@@ -241,14 +233,14 @@ class _SearchScreenState extends State<SearchScreen> {
       children: [
         ...List.generate(5, (index) {
           if (index < fullStars) {
-            return Icon(Icons.star, size: size, color: Color(0xFFFF6B35));
+            return Icon(Icons.star, size: size, color: AppColors.primaryOrange);
           } else if (index == fullStars && hasHalfStar) {
-            return Icon(Icons.star_half, size: size, color: Color(0xFFFF6B35));
+            return Icon(Icons.star_half, size: size, color: AppColors.primaryOrange);
           } else {
             return Icon(
               Icons.star_border,
               size: size,
-              color: Colors.grey.shade400,
+              color: AppColors.getBorder(context),
             );
           }
         }),
@@ -256,7 +248,7 @@ class _SearchScreenState extends State<SearchScreen> {
           const SizedBox(width: 4),
           Text(
             '${displayRating.toStringAsFixed(1)} ($reviewCount)',
-            style: TextStyle(fontSize: size - 2, color: AppColors.textLight),
+            style: TextStyle(fontSize: size - 2, color: AppColors.getTextMuted(context)),
           ),
         ],
       ],
@@ -266,140 +258,143 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.getBackground(context),
       body: CustomScrollView(
         slivers: [
-          // Sticky Search Bar
           SliverAppBar(
             pinned: true,
             floating: false,
-            backgroundColor: AppColors.white,
-            elevation: 2,
-            toolbarHeight: 70,
+            backgroundColor: AppColors.getCardBackground(context),
+            elevation: 0,
+            toolbarHeight: 60,
             leading: IconButton(
-              icon: Icon(Icons.arrow_back, color: AppColors.textDark),
+              icon: Icon(Icons.arrow_back, color: AppColors.getTextPrimary(context)),
               onPressed: () => Navigator.pop(context),
             ),
             title: Container(
-              height: 45,
+              height: 40,
               decoration: BoxDecoration(
-                color: AppColors.background,
-                borderRadius: BorderRadius.circular(12),
+                color: AppColors.getBackground(context),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppColors.getBorder(context).withOpacity(0.3)),
               ),
               child: TextField(
                 controller: _searchController,
                 focusNode: _searchFocusNode,
                 autofocus: true,
+                style: TextStyle(color: AppColors.getTextPrimary(context), fontSize: 14),
                 decoration: InputDecoration(
-                  hintText: "Search products in ${widget.universityName}...",
-                  hintStyle: AppTextStyles.body.copyWith(
-                    color: AppColors.textLight,
+                  hintText: "Search in ${widget.universityName}...",
+                  hintStyle: TextStyle(
+                    color: AppColors.getTextMuted(context),
                     fontSize: 14,
                   ),
                   prefixIcon: Icon(
                     Icons.search,
-                    color: AppColors.textLight,
+                    color: AppColors.getTextMuted(context),
                     size: 20,
                   ),
                   suffixIcon: _searchController.text.isNotEmpty
                       ? IconButton(
-                          icon: Icon(Icons.clear, size: 20),
+                          icon: Icon(Icons.clear, size: 18, color: AppColors.getTextMuted(context)),
                           onPressed: _clearSearch,
                         )
                       : null,
                   border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 ),
                 onSubmitted: _performSearch,
-                onChanged:
-                    _handleTextChange, // ✅ CHANGED: Now triggers autocomplete
+                onChanged: _handleTextChange,
                 textInputAction: TextInputAction.search,
               ),
             ),
+            bottom: PreferredSize(
+              preferredSize: Size.fromHeight(1),
+              child: Divider(height: 1, color: AppColors.getBorder(context).withOpacity(0.3)),
+            ),
           ),
 
-          // ✅ NEW: Autocomplete Dropdown
-          if (_showAutocomplete && !_hasSearched)  // ⬅️ Remove the isEmpty check
-  SliverToBoxAdapter(
-    child: Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.08),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: _isLoadingAutocomplete  // ⬅️ ADD THIS CONDITION
-          ? Padding(
-              padding: const EdgeInsets.all(16),
-              child: Center(
-                child: SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: AppColors.primary,
-                  ),
+          // Autocomplete Dropdown
+          if (_showAutocomplete && !_hasSearched)
+            SliverToBoxAdapter(
+              child: Container(
+                margin: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.getCardBackground(context),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppColors.getBorder(context).withOpacity(0.3), width: 0.5),
                 ),
-              ),
-            )
-          : _autocompleteResults.isEmpty  // ⬅️ ADD THIS CONDITION
-              ? Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Text(
-                    'No suggestions found',
-                    textAlign: TextAlign.center,
-                    style: AppTextStyles.body.copyWith(
-                      color: AppColors.textLight,
-                      fontSize: 12,
-                    ),
-                  ),
-                )
-              : Column(
-                
-                  children: _autocompleteResults.map((result) {
-                    final isFromRecent = _recentSearches.contains(result);
-                    return ListTile(
-                      dense: true,
-                      leading: Icon(
-                        isFromRecent ? Icons.history : Icons.search,
-                        size: 18,
-                        color: isFromRecent
-                            ? AppColors.textLight
-                            : AppColors.primary,
-                      ),
-                      title: RichText(
-                        text: TextSpan(
-                          children: _highlightMatch(
-                            result,
-                            _searchController.text,
-                          ),
-                          style: AppTextStyles.body.copyWith(
-                            fontSize: 14,
-                            color: AppColors.textDark,
+                child: _isLoadingAutocomplete
+                    ? Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Center(
+                          child: SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppColors.primaryOrange,
+                            ),
                           ),
                         ),
-                      ),
-                      trailing: Icon(
-                        Icons.north_west,
-                        size: 16,
-                        color: AppColors.textLight,
-                      ),
-                      onTap: () {
-                        _searchController.text = result;
-                        _performSearch(result);
-                      },
-                    );
-                  }).toList(),
-                ),
+                      )
+                    : _autocompleteResults.isEmpty
+                        ? Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Text(
+                              'No suggestions found',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: AppColors.getTextMuted(context),
+                                fontSize: 13,
+                              ),
+                            ),
+                          )
+                        : Column(
+                            children: _autocompleteResults.asMap().entries.map((entry) {
+                              final index = entry.key;
+                              final result = entry.value;
+                              final isFromRecent = _recentSearches.contains(result);
+                              final isLast = index == _autocompleteResults.length - 1;
+                              
+                              return Container(
+                                decoration: BoxDecoration(
+                                  border: isLast ? null : Border(
+                                    bottom: BorderSide(color: AppColors.getBorder(context).withOpacity(0.3), width: 0.5),
+                                  ),
+                                ),
+                                child: ListTile(
+                                  dense: true,
+                                  contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                                  leading: Icon(
+                                    isFromRecent ? Icons.history : Icons.search,
+                                    size: 18,
+                                    color: isFromRecent
+                                        ? AppColors.getTextMuted(context)
+                                        : AppColors.primaryOrange,
+                                  ),
+                                  title: RichText(
+                                    text: TextSpan(
+                                      children: _highlightMatch(result, _searchController.text),
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        color: AppColors.getTextPrimary(context),
+                                      ),
+                                    ),
+                                  ),
+                                  trailing: Icon(
+                                    Icons.north_west,
+                                    size: 16,
+                                    color: AppColors.getTextMuted(context),
+                                  ),
+                                  onTap: () {
+                                    _searchController.text = result;
+                                    _performSearch(result);
+                                  },
+                                ),
+                              );
+                            }).toList(),
+                          ),
               ),
             ),
 
@@ -410,22 +405,30 @@ class _SearchScreenState extends State<SearchScreen> {
                 padding: const EdgeInsets.all(16),
                 child: Row(
                   children: [
-                    Icon(Icons.search, size: 20, color: AppColors.primary),
+                    Icon(Icons.search, size: 18, color: AppColors.primaryOrange),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         'Results for "${_currentSearchQuery}"',
-                        style: AppTextStyles.subheading.copyWith(fontSize: 16),
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context)),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     const SizedBox(width: 8),
-                    Text(
-                      '${_searchResults.length}',
-                      style: AppTextStyles.body.copyWith(
-                        fontSize: 14,
-                        color: AppColors.textLight,
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryOrange.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        '${_searchResults.length}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primaryOrange,
+                        ),
                       ),
                     ),
                   ],
@@ -434,8 +437,8 @@ class _SearchScreenState extends State<SearchScreen> {
             ),
 
             if (_isLoading)
-              const SliverFillRemaining(
-                child: Center(child: CircularProgressIndicator()),
+              SliverFillRemaining(
+                child: Center(child: CircularProgressIndicator(color: AppColors.primaryOrange)),
               )
             else if (_searchResults.isEmpty)
               SliverFillRemaining(
@@ -445,16 +448,23 @@ class _SearchScreenState extends State<SearchScreen> {
                     children: [
                       Icon(
                         Icons.search_off,
-                        size: 80,
-                        color: AppColors.textLight.withOpacity(0.5),
+                        size: 64,
+                        color: AppColors.getTextMuted(context).withOpacity(0.5),
                       ),
                       const SizedBox(height: 16),
                       Text(
                         'No results found',
                         textAlign: TextAlign.center,
-                        style: AppTextStyles.subheading.copyWith(
-                          color: AppColors.textLight,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.getTextPrimary(context),
                         ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'Try different keywords',
+                        style: TextStyle(fontSize: 13, color: AppColors.getTextMuted(context)),
                       ),
                     ],
                   ),
@@ -462,18 +472,21 @@ class _SearchScreenState extends State<SearchScreen> {
               )
             else
               SliverPadding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
                 sliver: SliverGrid(
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 2,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 8,
+                    mainAxisSpacing: 8,
                     childAspectRatio: 0.62,
                   ),
-                  delegate: SliverChildBuilderDelegate((context, index) {
-                    final product = _searchResults[index];
-                    return _buildProductCard(product);
-                  }, childCount: _searchResults.length),
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final product = _searchResults[index];
+                      return _buildProductCard(product);
+                    },
+                    childCount: _searchResults.length,
+                  ),
                 ),
               ),
           ] else ...[
@@ -482,103 +495,123 @@ class _SearchScreenState extends State<SearchScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (_recentSearches.isNotEmpty) ...[
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: AppColors.getCardBackground(context),
+                        border: Border(
+                          bottom: BorderSide(color: AppColors.getBorder(context).withOpacity(0.3), width: 0.5),
+                        ),
+                      ),
                       child: Row(
                         children: [
-                          Icon(
-                            Icons.history,
-                            size: 20,
-                            color: AppColors.textLight,
-                          ),
+                          Icon(Icons.history, size: 18, color: AppColors.getTextMuted(context)),
                           const SizedBox(width: 8),
                           Text(
                             'Recent',
-                            style: AppTextStyles.subheading.copyWith(
-                              fontSize: 14,
-                            ),
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context)),
                           ),
                           const Spacer(),
                           TextButton(
                             onPressed: _clearRecentSearches,
+                            style: TextButton.styleFrom(
+                              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              minimumSize: Size(0, 0),
+                              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                            ),
                             child: Text(
                               'Clear',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: AppColors.primary,
-                              ),
+                              style: TextStyle(fontSize: 13, color: AppColors.primaryOrange, fontWeight: FontWeight.w500),
                             ),
                           ),
                         ],
                       ),
                     ),
-                    ...(_recentSearches.map(
-                      (search) => ListTile(
-                        leading: Icon(
-                          Icons.history,
-                          size: 20,
-                          color: AppColors.textLight,
-                        ),
-                        title: Text(
-                          search,
-                          style: AppTextStyles.body.copyWith(fontSize: 14),
-                        ),
-                        trailing: IconButton(
-                          icon: Icon(
-                            Icons.north_west,
-                            size: 18,
-                            color: AppColors.textLight,
-                          ),
-                          onPressed: () {
-                            _searchController.text = search;
-                            _performSearch(search);
-                          },
-                        ),
-                        onTap: () => _performSearch(search),
+                    Container(
+                      color: AppColors.getCardBackground(context),
+                      child: Column(
+                        children: _recentSearches.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final search = entry.value;
+                          final isLast = index == _recentSearches.length - 1;
+                          
+                          return Container(
+                            decoration: BoxDecoration(
+                              border: isLast ? null : Border(
+                                bottom: BorderSide(color: AppColors.getBorder(context).withOpacity(0.3), width: 0.5),
+                              ),
+                            ),
+                            child: ListTile(
+                              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                              leading: Icon(Icons.history, size: 18, color: AppColors.getTextMuted(context)),
+                              title: Text(
+                                search,
+                                style: TextStyle(fontSize: 14, color: AppColors.getTextPrimary(context)),
+                              ),
+                              trailing: IconButton(
+                                icon: Icon(Icons.north_west, size: 16, color: AppColors.getTextMuted(context)),
+                                onPressed: () {
+                                  _searchController.text = search;
+                                  _performSearch(search);
+                                },
+                              ),
+                              onTap: () => _performSearch(search),
+                            ),
+                          );
+                        }).toList(),
                       ),
-                    )),
-                    const Divider(height: 24),
+                    ),
+                    SizedBox(height: 8),
                   ],
 
                   if (_suggestions.isNotEmpty) ...[
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: AppColors.getCardBackground(context),
+                        border: Border(
+                          bottom: BorderSide(color: AppColors.getBorder(context).withOpacity(0.3), width: 0.5),
+                        ),
+                      ),
                       child: Row(
                         children: [
-                          Icon(
-                            Icons.trending_up,
-                            size: 20,
-                            color: Color(0xFF10B981),
-                          ),
+                          Icon(Icons.trending_up, size: 18, color: AppColors.successGreen),
                           const SizedBox(width: 8),
                           Text(
                             'Popular',
-                            style: AppTextStyles.subheading.copyWith(
-                              fontSize: 14,
-                            ),
+                            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context)),
                           ),
                         ],
                       ),
                     ),
-                    ...(_suggestions.map(
-                      (suggestion) => ListTile(
-                        leading: Icon(
-                          Icons.search,
-                          size: 20,
-                          color: AppColors.primary,
-                        ),
-                        title: Text(
-                          suggestion,
-                          style: AppTextStyles.body.copyWith(fontSize: 14),
-                        ),
-                        trailing: Icon(
-                          Icons.north_west,
-                          size: 18,
-                          color: AppColors.textLight,
-                        ),
-                        onTap: () => _performSearch(suggestion),
+                    Container(
+                      color: AppColors.getCardBackground(context),
+                      child: Column(
+                        children: _suggestions.asMap().entries.map((entry) {
+                          final index = entry.key;
+                          final suggestion = entry.value;
+                          final isLast = index == _suggestions.length - 1;
+                          
+                          return Container(
+                            decoration: BoxDecoration(
+                              border: isLast ? null : Border(
+                                bottom: BorderSide(color: AppColors.getBorder(context).withOpacity(0.3), width: 0.5),
+                              ),
+                            ),
+                            child: ListTile(
+                              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                              leading: Icon(Icons.search, size: 18, color: AppColors.primaryOrange),
+                              title: Text(
+                                suggestion,
+                                style: TextStyle(fontSize: 14, color: AppColors.getTextPrimary(context)),
+                              ),
+                              trailing: Icon(Icons.north_west, size: 16, color: AppColors.getTextMuted(context)),
+                              onTap: () => _performSearch(suggestion),
+                            ),
+                          );
+                        }).toList(),
                       ),
-                    )),
+                    ),
                   ],
                 ],
               ),
@@ -589,7 +622,6 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  // ✅ NEW: Helper to highlight matching text in autocomplete
   List<TextSpan> _highlightMatch(String text, String query) {
     if (query.isEmpty) {
       return [TextSpan(text: text)];
@@ -607,7 +639,7 @@ class _SearchScreenState extends State<SearchScreen> {
       if (index > 0) TextSpan(text: text.substring(0, index)),
       TextSpan(
         text: text.substring(index, index + query.length),
-        style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary),
+        style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.primaryOrange),
       ),
       if (index + query.length < text.length)
         TextSpan(text: text.substring(index + query.length)),
@@ -620,15 +652,9 @@ class _SearchScreenState extends State<SearchScreen> {
 
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 5,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        color: AppColors.getCardBackground(context),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.getBorder(context).withOpacity(0.3), width: 0.5),
       ),
       child: InkWell(
         onTap: () {
@@ -639,7 +665,7 @@ class _SearchScreenState extends State<SearchScreen> {
             ),
           );
         },
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -647,10 +673,7 @@ class _SearchScreenState extends State<SearchScreen> {
               child: Stack(
                 children: [
                   ClipRRect(
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(12),
-                    ),
-                    // ✅ FIXED: Now using CachedNetworkImage
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
                     child: CachedNetworkImage(
                       imageUrl: product.imageUrls.isNotEmpty
                           ? product.imageUrls.first
@@ -658,19 +681,12 @@ class _SearchScreenState extends State<SearchScreen> {
                       width: double.infinity,
                       fit: BoxFit.cover,
                       placeholder: (context, url) => Container(
-                        color: AppColors.background,
-                        child: Icon(
-                          Icons.image,
-                          color: AppColors.textLight.withOpacity(0.5),
-                        ),
+                        color: AppColors.getBackground(context),
+                        child: Icon(Icons.image, color: AppColors.getTextMuted(context)),
                       ),
                       errorWidget: (context, url, error) => Container(
-                        color: AppColors.background,
-                        child: Icon(
-                          Icons.shopping_bag_outlined,
-                          size: 50,
-                          color: AppColors.primary.withOpacity(0.3),
-                        ),
+                        color: AppColors.getBackground(context),
+                        child: Icon(Icons.shopping_bag_outlined, size: 50, color: AppColors.primaryOrange.withOpacity(0.3)),
                       ),
                     ),
                   ),
@@ -678,7 +694,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     top: 6,
                     left: 6,
                     child: Material(
-                      color: Colors.white,
+                      color: AppColors.getCardBackground(context).withOpacity(0.9),
                       borderRadius: BorderRadius.circular(20),
                       child: InkWell(
                         onTap: () {
@@ -692,13 +708,11 @@ class _SearchScreenState extends State<SearchScreen> {
                         },
                         borderRadius: BorderRadius.circular(20),
                         child: Padding(
-                          padding: const EdgeInsets.all(6),
+                          padding: const EdgeInsets.all(5),
                           child: Icon(
                             isFavorite ? Icons.favorite : Icons.favorite_border,
-                            color: isFavorite
-                                ? Colors.red
-                                : Colors.grey.shade600,
-                            size: 16,
+                            color: isFavorite ? Colors.red : AppColors.getTextMuted(context),
+                            size: 15,
                           ),
                         ),
                       ),
@@ -708,7 +722,7 @@ class _SearchScreenState extends State<SearchScreen> {
                     top: 6,
                     right: 6,
                     child: Material(
-                      color: isInCart ? AppColors.primary : Colors.white,
+                      color: isInCart ? AppColors.primaryOrange : AppColors.getCardBackground(context).withOpacity(0.9),
                       borderRadius: BorderRadius.circular(20),
                       child: InkWell(
                         onTap: () {
@@ -722,13 +736,11 @@ class _SearchScreenState extends State<SearchScreen> {
                         },
                         borderRadius: BorderRadius.circular(20),
                         child: Padding(
-                          padding: const EdgeInsets.all(6),
+                          padding: const EdgeInsets.all(5),
                           child: Icon(
                             Icons.add_shopping_cart,
-                            color: isInCart
-                                ? Colors.white
-                                : Colors.grey.shade600,
-                            size: 16,
+                            color: isInCart ? Colors.white : AppColors.primaryOrange,
+                            size: 15,
                           ),
                         ),
                       ),
@@ -744,18 +756,18 @@ class _SearchScreenState extends State<SearchScreen> {
                 children: [
                   Text(
                     _formatPrice(product.price),
-                    style: AppTextStyles.price.copyWith(
+                    style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFFFF6B35),
+                      color: AppColors.primaryOrange,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     product.name,
-                    style: AppTextStyles.body.copyWith(
-                      fontSize: 12,
-                      color: AppColors.textDark,
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: AppColors.getTextPrimary(context),
                       fontWeight: FontWeight.w600,
                     ),
                     maxLines: 2,
@@ -765,35 +777,18 @@ class _SearchScreenState extends State<SearchScreen> {
                   Row(
                     children: [
                       if (product.isFeatured || product.isTopSeller) ...[
-                        Icon(
-                          Icons.check_circle,
-                          size: 11,
-                          color: Color(0xFF10B981),
-                        ),
+                        Icon(Icons.check_circle, size: 10, color: AppColors.successGreen),
                         const SizedBox(width: 3),
                         Text(
                           'verified',
-                          style: TextStyle(
-                            fontSize: 9,
-                            color: Color(0xFF10B981),
-                            fontWeight: FontWeight.w500,
-                          ),
+                          style: TextStyle(fontSize: 9, color: AppColors.successGreen, fontWeight: FontWeight.w500),
                         ),
-                        Text(
-                          ' | ',
-                          style: TextStyle(
-                            fontSize: 9,
-                            color: AppColors.textLight,
-                          ),
-                        ),
+                        Text(' | ', style: TextStyle(fontSize: 9, color: AppColors.getTextMuted(context))),
                       ],
                       Flexible(
                         child: Text(
                           product.universityName ?? 'N/A',
-                          style: AppTextStyles.body.copyWith(
-                            fontSize: 9,
-                            color: AppColors.textLight,
-                          ),
+                          style: TextStyle(fontSize: 9, color: AppColors.getTextMuted(context)),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),

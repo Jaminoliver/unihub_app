@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../services/auth_service.dart';
+import '../../services/otp_service.dart';
 import '../../main.dart';
 import 'signup_screen.dart';
+import 'otp_verification_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -11,15 +13,17 @@ class LoginScreen extends StatefulWidget {
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin {
+class _LoginScreenState extends State<LoginScreen>
+    with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final AuthService _authService = AuthService();
+  final OTPService _otpService = OTPService();
 
   bool _isLoading = false;
   bool _obscurePassword = true;
-  
+
   late AnimationController _successAnimationController;
   late AnimationController _errorAnimationController;
   late AnimationController _logoAnimationController;
@@ -57,6 +61,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     super.dispose();
   }
 
+  /// NEW: Handle login with device verification
   Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) {
       _showErrorAnimation();
@@ -66,14 +71,55 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     setState(() => _isLoading = true);
 
     try {
-      await _authService.signIn(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
+      final email = _emailController.text.trim();
+      final password = _passwordController.text;
+
+      // Step 1: Login and check device
+      final result = await _authService.signInWithDeviceCheck(
+        email: email,
+        password: password,
       );
 
-      if (mounted) {
+      if (!mounted) return;
+
+      if (result['requires_otp'] == true) {
+        // Step 2: New device detected - navigate to OTP screen
+        setState(() => _isLoading = false);
+
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => OTPVerificationScreen(
+              email: email,
+              otpType: 'login',
+              title: 'New Device Detected',
+              subtitle: 'Verify your identity. Code sent to',
+              onVerify: (otp) async {
+                // Step 3: Verify OTP and register device
+                await _authService.verifyLoginOTP(
+                  email: email,
+                  otp: otp,
+                );
+
+                if (mounted) {
+                  await _showSuccessAnimation();
+                  Navigator.of(context).pushNamedAndRemoveUntil(
+                    '/home',
+                    (route) => false,
+                  );
+                }
+              },
+              onResend: () async {
+                await _otpService.resendOTP(
+                  email: email,
+                  type: 'login',
+                );
+              },
+            ),
+          ),
+        );
+      } else {
+        // Known device - login successful
         await _showSuccessAnimation();
-        
         Navigator.of(context).pushNamedAndRemoveUntil(
           '/home',
           (route) => false,
@@ -81,11 +127,10 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       }
     } catch (e) {
       if (mounted) {
+        setState(() => _isLoading = false);
         _showErrorSnackBar('Login failed: ${e.toString()}');
         _showErrorAnimation();
       }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -93,7 +138,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
     await showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => _SuccessDialog(controller: _successAnimationController),
+      builder: (context) =>
+          _SuccessDialog(controller: _successAnimationController),
     );
   }
 
@@ -177,7 +223,10 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
             final offset = _errorAnimationController.value * 10;
             return Transform.translate(
               offset: Offset(
-                offset * ((_errorAnimationController.value * 4).round() % 2 == 0 ? 1 : -1),
+                offset *
+                    ((_errorAnimationController.value * 4).round() % 2 == 0
+                        ? 1
+                        : -1),
                 0,
               ),
               child: child,
@@ -237,7 +286,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                   Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
                             colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)],
@@ -257,7 +307,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                       const Expanded(
                         child: Text(
                           'Login to continue shopping',
-                          style: TextStyle(fontSize: 16, color: Color(0xFF6B7280)),
+                          style:
+                              TextStyle(fontSize: 16, color: Color(0xFF6B7280)),
                         ),
                       ),
                     ],
@@ -271,7 +322,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                     decoration: InputDecoration(
                       labelText: 'Email',
                       hintText: 'Enter your email address',
-                      hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                      hintStyle: TextStyle(
+                          color: Colors.grey.shade400, fontSize: 14),
                       prefixIcon: Container(
                         padding: const EdgeInsets.all(12),
                         child: const FaIcon(
@@ -290,7 +342,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: Color(0xFFFF6B35), width: 2),
+                        borderSide:
+                            const BorderSide(color: Color(0xFFFF6B35), width: 2),
                       ),
                       errorBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
@@ -298,7 +351,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                       ),
                       filled: true,
                       fillColor: const Color(0xFFFAFAFA),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 16),
                     ),
                     validator: (value) {
                       if (value == null || value.isEmpty) {
@@ -320,7 +374,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                     decoration: InputDecoration(
                       labelText: 'Password',
                       hintText: 'Enter your password',
-                      hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                      hintStyle: TextStyle(
+                          color: Colors.grey.shade400, fontSize: 14),
                       prefixIcon: Container(
                         padding: const EdgeInsets.all(12),
                         child: const FaIcon(
@@ -331,7 +386,9 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                       ),
                       suffixIcon: IconButton(
                         icon: FaIcon(
-                          _obscurePassword ? FontAwesomeIcons.eyeSlash : FontAwesomeIcons.eye,
+                          _obscurePassword
+                              ? FontAwesomeIcons.eyeSlash
+                              : FontAwesomeIcons.eye,
                           size: 18,
                           color: Colors.grey.shade600,
                         ),
@@ -349,7 +406,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: Color(0xFFFF6B35), width: 2),
+                        borderSide:
+                            const BorderSide(color: Color(0xFFFF6B35), width: 2),
                       ),
                       errorBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
@@ -357,7 +415,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                       ),
                       filled: true,
                       fillColor: const Color(0xFFFAFAFA),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 16),
                     ),
                     validator: (value) {
                       if (value == null || value.isEmpty) {
@@ -377,7 +436,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                         _showForgotPasswordDialog();
                       },
                       style: TextButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                       ),
                       child: const Text(
                         'Forgot Password?',
@@ -392,14 +452,15 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
                   const SizedBox(height: 24),
 
-                  // Login button with gradient
+                  // Login button
                   SizedBox(
                     height: 56,
                     child: ElevatedButton(
                       onPressed: _isLoading ? null : _handleLogin,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFFFF6B35),
-                        disabledBackgroundColor: const Color(0xFFFF6B35).withOpacity(0.6),
+                        disabledBackgroundColor:
+                            const Color(0xFFFF6B35).withOpacity(0.6),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),
@@ -412,7 +473,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                               height: 24,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2.5,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
                               ),
                             )
                           : const Text(
@@ -481,7 +543,7 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
 
                   const SizedBox(height: 16),
 
-                  // Security info
+                  // Security info with device verification note
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
@@ -508,11 +570,12 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                         const SizedBox(width: 12),
                         const Expanded(
                           child: Text(
-                            'Your data is secure and encrypted',
+                            'Protected with device verification\nNew devices require OTP confirmation',
                             style: TextStyle(
-                              fontSize: 13,
+                              fontSize: 12,
                               color: Color(0xFF0369A1),
                               fontWeight: FontWeight.w500,
+                              height: 1.4,
                             ),
                           ),
                         ),
@@ -537,7 +600,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
           title: Row(
             children: [
               Container(
@@ -578,8 +642,10 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                   decoration: InputDecoration(
                     labelText: 'Email',
                     hintText: 'Enter your email',
-                    hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
-                    prefixIcon: const Icon(Icons.email_outlined, color: Color(0xFFFF6B35)),
+                    hintStyle:
+                        TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                    prefixIcon: const Icon(Icons.email_outlined,
+                        color: Color(0xFFFF6B35)),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
                       borderSide: BorderSide(color: Colors.grey.shade300),
@@ -590,11 +656,13 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFFFF6B35), width: 2),
+                      borderSide:
+                          const BorderSide(color: Color(0xFFFF6B35), width: 2),
                     ),
                     filled: true,
                     fillColor: const Color(0xFFFAFAFA),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 16),
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) {
@@ -634,7 +702,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                         );
                         if (context.mounted) {
                           Navigator.pop(dialogContext);
-                          _showSuccessSnackBar('Password reset email sent! Check your inbox.');
+                          _showSuccessSnackBar(
+                              'Password reset email sent! Check your inbox.');
                         }
                       } catch (e) {
                         if (context.mounted) {
@@ -651,7 +720,8 @@ class _LoginScreenState extends State<LoginScreen> with TickerProviderStateMixin
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               ),
               child: isLoading
                   ? const SizedBox(
@@ -700,62 +770,58 @@ class _SuccessDialogState extends State<_SuccessDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Colors.transparent,
-      child: Container(
-        padding: const EdgeInsets.all(32),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(24),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ScaleTransition(
-              scale: CurvedAnimation(
-                parent: widget.controller,
-                curve: Curves.elasticOut,
-              ),
-              child: Container(
-                width: 80,
-                height: 80,
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xFF10B981), Color(0xFF059669)],
-                  ),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.check,
-                  color: Colors.white,
-                  size: 48,
-                ),
-              ),
+      child: FadeTransition(
+        opacity: widget.controller,
+        child: ScaleTransition(
+          scale: CurvedAnimation(
+            parent: widget.controller,
+            curve: Curves.easeOut,
+          ),
+          child: Container(
+            padding: const EdgeInsets.all(32),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
             ),
-            const SizedBox(height: 24),
-            FadeTransition(
-              opacity: widget.controller,
-              child: const Column(
-                children: [
-                  Text(
-                    'Welcome Back!',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1A1A1A),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF10B981), Color(0xFF059669)],
                     ),
+                    shape: BoxShape.circle,
                   ),
-                  SizedBox(height: 8),
-                  Text(
-                    'Login successful',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Color(0xFF6B7280),
-                    ),
+                  child: const Icon(
+                    Icons.check,
+                    color: Colors.white,
+                    size: 48,
                   ),
-                ],
-              ),
+                ),
+                const SizedBox(height: 24),
+                const Text(
+                  'Welcome Back!',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Login successful',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Color(0xFF6B7280),
+                  ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

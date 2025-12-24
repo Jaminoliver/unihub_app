@@ -1,7 +1,7 @@
+// home_screen.dart
 import 'package:flutter/material.dart';
 import 'dart:async';
 import '../constants/app_colors.dart';
-import '../constants/app_text_styles.dart';
 import '../services/product_service.dart';
 import '../services/auth_service.dart';
 import '../services/university_category_services.dart';
@@ -11,15 +11,19 @@ import '../services/product_view_service.dart';
 import '../models/product_model.dart';
 import '../models/university_category_models.dart';
 import '../widgets/unihub_loading_widget.dart';
-import '../widgets/empty_states.dart';
 import '../widgets/campus_pulse_widget.dart';
 import './search_screen.dart';
 import './notifications_screen.dart';
 import './wishlist_screen.dart';
-import 'special_deal_products_screen.dart'; 
-import 'product_details_screen.dart';  
-import 'category_products_screen.dart'; 
+import 'special_deal_products_screen.dart';
+import 'product_details_screen.dart';
 import '../widgets/home_screen_widgets.dart';
+
+const kOrangeGradient = LinearGradient(
+  colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)],
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+);
 
 class HomeScreen extends StatefulWidget {
   final ScrollController? scrollController;
@@ -34,9 +38,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   
   final _productService = ProductService();
   final _authService = AuthService();
-  final CartService _cartService = CartService();
+  final _cartService = CartService();
   final _universityService = UniversityService();
-  final _categoryService = CategoryService();
   final _wishlistService = WishlistService();
   final _viewService = ProductViewService();
   
@@ -51,11 +54,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   
   bool _isLoadingData = true;
   bool _isLoadingProducts = true;
-  bool _categoriesError = false;
   
   Set<String> _favorites = {};
   final Set<String> _cart = {};
-  Timer? _flashSaleTimer;
   Timer? _viewCountTimer;
   String? _isAddingToCartId;
   Map<String, int> _viewerCounts = {};
@@ -65,7 +66,6 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     super.initState();
     _tabController = TabController(length: 3, vsync: this);
     _scrollController = widget.scrollController ?? ScrollController();
-    _startFlashSaleTimer();
     _initializeData();
     Future.delayed(Duration(milliseconds: 500), () {
       if (mounted) _startViewCountUpdates();
@@ -76,16 +76,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   void dispose() {
     _tabController.dispose();
     if (widget.scrollController == null) _scrollController.dispose();
-    _flashSaleTimer?.cancel();
     _viewCountTimer?.cancel();
     super.dispose();
-  }
-
-  void _startFlashSaleTimer() {
-    _flashSaleTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (!mounted) { timer.cancel(); return; }
-      setState(() {});
-    });
   }
 
   void _startViewCountUpdates() {
@@ -98,26 +90,16 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Future<void> _loadViewerCounts() async {
     try {
       final counts = <String, int>{};
+      final allProductIds = [..._featuredProducts.map((p) => p.id), ..._allProducts.map((p) => p.id), ..._lowestPriceProducts.map((p) => p.id)].toSet().toList();
       
-      final allProductIds = [
-        ..._featuredProducts.map((p) => p.id),
-        ..._allProducts.map((p) => p.id),
-        ..._lowestPriceProducts.map((p) => p.id),
-      ].toSet().toList();
-      
-      await Future.wait(
-        allProductIds.map((id) async {
-          try {
-            final count = await _viewService.getTotalViews(id).timeout(
-              Duration(seconds: 2),
-              onTimeout: () => 0,
-            );
-            counts[id] = count;
-          } catch (e) {
-            counts[id] = 0;
-          }
-        }),
-      );
+      await Future.wait(allProductIds.map((id) async {
+        try {
+          final count = await _viewService.getTotalViews(id).timeout(Duration(seconds: 2), onTimeout: () => 0);
+          counts[id] = count;
+        } catch (e) {
+          counts[id] = 0;
+        }
+      }));
       
       if (mounted) setState(() => _viewerCounts = counts);
     } catch (e) {
@@ -128,10 +110,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   Future<void> _initializeData() async {
     setState(() => _isLoadingData = true);
     try {
-      await Future.wait([
-        _loadUniversities(), 
-        _loadWishlistIds(),
-      ]);
+      await Future.wait([_loadUniversities(), _loadWishlistIds()]);
       await _refreshProductData();
     } catch (e) {
       debugPrint('Error initializing data: $e');
@@ -178,11 +157,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     if (_selectedUniversityId == null) return;
     setState(() => _isLoadingProducts = true);
     try {
-      await Future.wait([
-        _loadAllProducts(),
-        _loadFeaturedProducts(),
-        _loadLowestPriceProducts(),
-      ]);
+      await Future.wait([_loadAllProducts(), _loadFeaturedProducts(), _loadLowestPriceProducts()]);
       _loadViewerCounts();
     } catch (e) {
       debugPrint('Error refreshing product data: $e');
@@ -202,10 +177,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
   Future<void> _loadFeaturedProducts() async {
     try {
-      final products = await _productService.getTrendingProducts(
-        universityId: _selectedUniversityId, 
-        limit: 12
-      );
+      final products = await _productService.getTrendingProducts(universityId: _selectedUniversityId, limit: 12);
       if (mounted) setState(() => _featuredProducts = products);
     } catch (e) {
       debugPrint('Error loading featured products: $e');
@@ -236,12 +208,9 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   Future<void> _navigateToProductDetails(ProductModel product) async {
-    await Navigator.push(
-      context, 
-      MaterialPageRoute(builder: (context) => ProductDetailsScreen(product: product))
-    );
-    if (mounted) _loadViewerCounts();
-  }
+  await Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (context) => ProductDetailsScreen(product: product)));
+  if (mounted) _loadViewerCounts();
+}
 
   Future<void> _toggleFavorite(String productId) async {
     final userId = _authService.currentUserId;
@@ -276,14 +245,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('"${product.name}" added to cart!'),
           duration: const Duration(seconds: 2),
-          backgroundColor: const Color(0xFF10B981),
+          backgroundColor: AppColors.successGreen,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to add: ${e.toString()}'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to add: ${e.toString()}'), backgroundColor: AppColors.errorRed));
       }
     } finally {
       if (mounted) setState(() => _isAddingToCartId = null);
@@ -291,34 +260,15 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   void _navigateToSpecialDeal(String dealType, String dealTitle) {
-  Navigator.push(
-    context,
-    MaterialPageRoute(
-      builder: (context) => SpecialDealProductsScreen(
-        dealType: dealType,
-        dealTitle: dealTitle,
-        universityId: _selectedUniversityId,
-        state: _selectedState,
-      ),
-    ),
-  );
-}
-
-  List<ProductModel> _getFilteredProductsForTab(int tabIndex) {
-    switch (tabIndex) {
-      case 0: return _allProducts;
-      case 1: return _featuredProducts;
-      case 2: return _lowestPriceProducts;
-      default: return _allProducts;
-    }
+    Navigator.push(context, MaterialPageRoute(builder: (context) => SpecialDealProductsScreen(dealType: dealType, dealTitle: dealTitle, universityId: _selectedUniversityId, state: _selectedState)));
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoadingData) return Scaffold(backgroundColor: AppColors.background, body: Center(child: UniHubLoader(size: 80)));
+    if (_isLoadingData) return Scaffold(backgroundColor: AppColors.getBackground(context), body: Center(child: UniHubLoader(size: 80)));
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.getBackground(context),
       body: NestedScrollView(
         controller: _scrollController,
         headerSliverBuilder: (BuildContext context, bool innerBoxIsScrolled) {
@@ -338,14 +288,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             SliverToBoxAdapter(
               child: Column(
                 children: [
-                  const SizedBox(height: 4),
-                  CategoriesDirectory(
-                    selectedUniversityId: _selectedUniversityId,
-                    selectedState: _selectedState,
-                  ),
-                  const SizedBox(height: 4),
-                  Divider(height: 1, color: Colors.grey.shade300, indent: 16, endIndent: 16),
-                  const SizedBox(height: 8),
+                  SizedBox(height: 4),
+                  CategoriesDirectory(selectedUniversityId: _selectedUniversityId, selectedState: _selectedState),
+                  SizedBox(height: 8),
+                  _divider(),
                   TrendingSection(
                     selectedCampus: _selectedCampus,
                     selectedState: _selectedState,
@@ -359,29 +305,27 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                     onToggleFavorite: (id) => _toggleFavorite(id),
                     onToggleCart: _toggleCart,
                   ),
-                  const SizedBox(height: 8),
-                  Divider(height: 1, color: Colors.grey.shade300, indent: 16, endIndent: 16),
-                  const SizedBox(height: 13),
-                  _isLoadingProducts
-                      ? Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
-                          child: SpecialDealsGridSkeleton(),
-                        )
-                      : SpecialDealsGrid(onDealTap: _navigateToSpecialDeal),
-                  const SizedBox(height: 8),
-                  Divider(height: 1, color: Colors.grey.shade300, indent: 16, endIndent: 16),
-                  const SizedBox(height: 13),
+                  SizedBox(height: 8),
+                  _divider(),
+                  SizedBox(height: 12),
+                  _isLoadingProducts ? Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: SpecialDealsGridSkeleton()) : SpecialDealsGrid(onDealTap: _navigateToSpecialDeal),
+                  SizedBox(height: 8),
+                  _divider(),
+                  SizedBox(height: 12),
                   CampusPulseWidget(universityId: _selectedUniversityId),
-                  const SizedBox(height: 8),
+                  SizedBox(height: 8),
                 ],
               ),
             ),
             SliverPersistentHeader(
               delegate: SliverAppBarDelegate(TabBar(
                 controller: _tabController,
-                labelColor: Color(0xFFFF6B35),
-                unselectedLabelColor: AppColors.textLight,
-                indicatorColor: Color(0xFFFF6B35),
+                labelColor: AppColors.primaryOrange,
+                unselectedLabelColor: AppColors.getTextMuted(context),
+                indicatorColor: AppColors.primaryOrange,
+                indicatorWeight: 2,
+                labelStyle: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                unselectedLabelStyle: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
                 tabs: const [Tab(text: 'All Products'), Tab(text: 'Picked for You'), Tab(text: 'Lowest Price')],
               )),
               pinned: true,
@@ -436,12 +380,14 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
+  Widget _divider() => Divider(height: 1, color: AppColors.getBorder(context).withOpacity(0.3));
+
   void _showCampusSelectorBottomSheet() {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: AppColors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      backgroundColor: AppColors.getCardBackground(context),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(16))),
       builder: (context) => CampusSelectorBottomSheet(
         universities: _universities,
         selectedUniversityId: _selectedUniversityId,
@@ -462,19 +408,18 @@ class SpecialDealsGridSkeleton extends StatelessWidget {
       physics: const NeverScrollableScrollPhysics(),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 2,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
         childAspectRatio: 1.35,
       ),
       itemCount: 6,
       itemBuilder: (context, index) => Container(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          color: AppColors.getCardBackground(context),
+          border: Border.all(color: AppColors.getBorder(context).withOpacity(0.3), width: 0.5),
         ),
-        child: Center(
-          child: UniHubLoader(size: 40),
-        ),
+        child: Center(child: UniHubLoader(size: 30)),
       ),
     );
   }

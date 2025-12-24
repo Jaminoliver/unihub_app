@@ -4,17 +4,11 @@ import 'package:image_picker/image_picker.dart';
 import '../services/profile_service.dart';
 import '../models/user_model.dart';
 
-// Theme matching home screen
 const kOrangeGradient = LinearGradient(
   colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)],
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,
 );
-const kNavyBlue = Color(0xFF1E3A8A);
-const kTextLight = Color(0xFF6B7280);
-const kTextDark = Color(0xFF1F2937);
-const kAshGray = Color(0xFFF5F5F7);
-const kWhite = Colors.white;
 
 class EditProfileScreen extends StatefulWidget {
   final UserModel user;
@@ -258,7 +252,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           children: [
             Icon(
               isError ? Icons.error_outline : Icons.check_circle,
-              color: kWhite,
+              color: Colors.white,
             ),
             const SizedBox(width: 12),
             Expanded(child: Text(message)),
@@ -284,15 +278,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: kAshGray,
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: kWhite,
+        backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: ShaderMask(
-            shaderCallback: (bounds) => kOrangeGradient.createShader(bounds),
-            child: const Icon(Icons.arrow_back_ios_new, color: kWhite),
-          ),
+          icon: Icon(Icons.close, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
         title: ShaderMask(
@@ -300,13 +291,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           child: const Text(
             'Edit Profile',
             style: TextStyle(
-              color: kWhite,
+              color: Colors.white,
               fontSize: 20,
               fontWeight: FontWeight.bold,
               letterSpacing: -0.3,
             ),
           ),
         ),
+        centerTitle: true,
         actions: [
           if (_isLoading)
             Center(
@@ -323,19 +315,12 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           else
             TextButton(
               onPressed: _saveProfile,
-              style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-              ),
-              child: ShaderMask(
-                shaderCallback: (bounds) =>
-                    kOrangeGradient.createShader(bounds),
-                child: const Text(
-                  'Save',
-                  style: TextStyle(
-                    color: kWhite,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+              child: Text(
+                'Done',
+                style: TextStyle(
+                  color: Color(0xFFFF6B35),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
             ),
@@ -343,421 +328,267 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       ),
       body: Form(
         key: _formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              const SizedBox(height: 12),
-              _buildProfileImageSection(),
-              const SizedBox(height: 16),
-              _buildPersonalInfoSection(),
-              const SizedBox(height: 12),
-              _buildDeliveryAddressSection(),
-              const SizedBox(height: 12),
-              _buildReadOnlyEmailSection(),
-              const SizedBox(height: 40),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProfileImageSection() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: kWhite,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Stack(
-            children: [
-              Container(
-                width: 110,
-                height: 110,
-                decoration: BoxDecoration(
-                  gradient: kOrangeGradient,
-                  borderRadius: BorderRadius.circular(22),
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color(0xFFFF6B35).withOpacity(0.3),
-                      blurRadius: 16,
-                      offset: const Offset(0, 6),
+        child: ListView(
+          children: [
+            const SizedBox(height: 20),
+            
+            // Profile Picture
+            Center(
+              child: Column(
+                children: [
+                  Container(
+                    width: 90,
+                    height: 90,
+                    decoration: BoxDecoration(
+                      gradient: kOrangeGradient,
+                      borderRadius: BorderRadius.circular(8),
                     ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(22),
-                  child: _imageFile != null
-                      ? Image.file(_imageFile!, fit: BoxFit.cover)
-                      : _imageUrl != null
-                          ? Image.network(
-                              _imageUrl!,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                return Center(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: _imageFile != null
+                          ? Image.file(_imageFile!, fit: BoxFit.cover)
+                          : _imageUrl != null
+                              ? Image.network(
+                                  _imageUrl!,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Center(
+                                      child: Text(
+                                        _getInitials(widget.user.fullName),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 36,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                )
+                              : Center(
                                   child: Text(
                                     _getInitials(widget.user.fullName),
                                     style: const TextStyle(
-                                      color: kWhite,
-                                      fontSize: 40,
+                                      color: Colors.white,
+                                      fontSize: 36,
                                       fontWeight: FontWeight.bold,
                                     ),
                                   ),
-                                );
-                              },
-                            )
-                          : Center(
-                              child: Text(
-                                _getInitials(widget.user.fullName),
-                                style: const TextStyle(
-                                  color: kWhite,
-                                  fontSize: 40,
-                                  fontWeight: FontWeight.bold,
                                 ),
-                              ),
-                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  GestureDetector(
+                    onTap: _pickImage,
+                    child: Text(
+                      'Change photo',
+                      style: TextStyle(
+                        color: Color(0xFFFF6B35),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 30),
+
+            // Form Fields
+            _buildTextField(
+              controller: _nameController,
+              label: 'Name',
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Please enter your name';
+                }
+                return null;
+              },
+            ),
+
+            _buildTextField(
+              controller: _phoneController,
+              label: 'Phone',
+              keyboardType: TextInputType.phone,
+              validator: (value) {
+                if (value != null && value.trim().isNotEmpty) {
+                  if (value.trim().length < 10) {
+                    return 'Phone number must be at least 10 digits';
+                  }
+                }
+                return null;
+              },
+            ),
+
+            _buildDropdown(
+              label: 'State',
+              value: _selectedState,
+              isLoading: _isStatesLoading,
+              hint: 'Select state',
+              items: _states.map((String state) {
+                return DropdownMenuItem<String>(
+                  value: state,
+                  child: Text(state),
+                );
+              }).toList(),
+              onChanged: (String? newValue) {
+                if (newValue != null && newValue != _selectedState) {
+                  setState(() {
+                    _selectedState = newValue;
+                    _universities = [];
+                    _selectedUniversityId = null;
+                    _isUniversitiesLoading = true;
+                  });
+                  _loadUniversities(newValue);
+                }
+              },
+              validator: (value) {
+                if (value == null) return 'Required';
+                return null;
+              },
+            ),
+
+            _buildDropdown(
+              label: 'University',
+              value: _selectedUniversityId,
+              isLoading: _isUniversitiesLoading,
+              isEnabled: _selectedState != null && !_isUniversitiesLoading,
+              hint: _selectedState == null
+                  ? 'Select state first'
+                  : 'Select university',
+              items: _universities.map((Map<String, dynamic> university) {
+                return DropdownMenuItem<String>(
+                  value: university['id'] as String,
+                  child: Text(university['name'] as String),
+                );
+              }).toList(),
+              onChanged: (String? newValue) {
+                setState(() => _selectedUniversityId = newValue);
+              },
+              validator: (value) {
+                if (value == null) return 'Required';
+                return null;
+              },
+            ),
+
+            const SizedBox(height: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                'DELIVERY ADDRESS',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade600,
+                  letterSpacing: 0.5,
                 ),
               ),
-              Positioned(
-                right: 0,
-                bottom: 0,
-                child: GestureDetector(
-                  onTap: _pickImage,
-                  child: Container(
-                    padding: const EdgeInsets.all(10),
-                    decoration: BoxDecoration(
-                      gradient: kOrangeGradient,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: const Color(0xFFFF6B35).withOpacity(0.3),
-                          blurRadius: 12,
+            ),
+            const SizedBox(height: 12),
+
+            _buildTextField(
+              controller: _addressLineController,
+              label: 'Address Line',
+              maxLines: 2,
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Required';
+                }
+                return null;
+              },
+            ),
+
+            _buildTextField(
+              controller: _cityController,
+              label: 'City',
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Required';
+                }
+                return null;
+              },
+            ),
+
+            _buildTextField(
+              controller: _deliveryStateController,
+              label: 'State',
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Required';
+                }
+                return null;
+              },
+            ),
+
+            _buildTextField(
+              controller: _landmarkController,
+              label: 'Landmark (Optional)',
+            ),
+
+            _buildTextField(
+              controller: _deliveryPhoneController,
+              label: 'Delivery Phone',
+              keyboardType: TextInputType.phone,
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Required';
+                }
+                if (value.trim().length < 10) {
+                  return 'Must be at least 10 digits';
+                }
+                return null;
+              },
+            ),
+
+            const SizedBox(height: 20),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Text(
+                'ACCOUNT',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.grey.shade600,
+                  letterSpacing: 0.5,
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Email',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.grey.shade600,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          widget.user.email,
+                          style: TextStyle(
+                            fontSize: 15,
+                            color: Colors.black87,
+                          ),
                         ),
                       ],
                     ),
-                    child: const Icon(
-                      Icons.camera_alt,
-                      color: kWhite,
-                      size: 20,
-                    ),
                   ),
-                ),
+                  Icon(Icons.lock_outline, color: Colors.grey.shade400, size: 20),
+                ],
               ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'Tap camera icon to change photo',
-            style: TextStyle(color: kTextLight, fontSize: 12),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPersonalInfoSection() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: kWhite,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              ShaderMask(
-                shaderCallback: (bounds) =>
-                    kOrangeGradient.createShader(bounds),
-                child: const Icon(
-                  Icons.person_outline,
-                  size: 16,
-                  color: kWhite,
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Text(
-                'Personal Information',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: kTextDark,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            controller: _nameController,
-            label: 'Full Name',
-            icon: Icons.person_outline,
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'Please enter your full name';
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: 14),
-          _buildTextField(
-            controller: _phoneController,
-            label: 'Phone Number',
-            icon: Icons.phone_outlined,
-            keyboardType: TextInputType.phone,
-            validator: (value) {
-              if (value != null && value.trim().isNotEmpty) {
-                if (value.trim().length < 10) {
-                  return 'Phone number must be at least 10 digits';
-                }
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: 14),
-          _buildDropdown(
-            label: 'State',
-            icon: Icons.map_outlined,
-            value: _selectedState,
-            isLoading: _isStatesLoading,
-            hint: 'Select your state',
-            items: _states.map((String state) {
-              return DropdownMenuItem<String>(
-                value: state,
-                child: Text(state, style: const TextStyle(fontSize: 14)),
-              );
-            }).toList(),
-            onChanged: (String? newValue) {
-              if (newValue != null && newValue != _selectedState) {
-                setState(() {
-                  _selectedState = newValue;
-                  _universities = [];
-                  _selectedUniversityId = null;
-                  _isUniversitiesLoading = true;
-                });
-                _loadUniversities(newValue);
-              }
-            },
-            validator: (value) {
-              if (value == null) return 'Please select a state';
-              return null;
-            },
-          ),
-          const SizedBox(height: 14),
-          _buildDropdown(
-            label: 'University',
-            icon: Icons.school_outlined,
-            value: _selectedUniversityId,
-            isLoading: _isUniversitiesLoading,
-            isEnabled: _selectedState != null && !_isUniversitiesLoading,
-            hint: _selectedState == null
-                ? 'Select a state first'
-                : 'Select your university',
-            items: _universities.map((Map<String, dynamic> university) {
-              return DropdownMenuItem<String>(
-                value: university['id'] as String,
-                child: Text(
-                  university['name'] as String,
-                  style: const TextStyle(fontSize: 14),
-                ),
-              );
-            }).toList(),
-            onChanged: (String? newValue) {
-              setState(() => _selectedUniversityId = newValue);
-            },
-            validator: (value) {
-              if (value == null) return 'Please select a university';
-              return null;
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDeliveryAddressSection() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: kWhite,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              ShaderMask(
-                shaderCallback: (bounds) =>
-                    kOrangeGradient.createShader(bounds),
-                child: const Icon(
-                  Icons.location_on_outlined,
-                  size: 16,
-                  color: kWhite,
-                ),
-              ),
-              const SizedBox(width: 8),
-              const Text(
-                'Delivery Information',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: kTextDark,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          _buildTextField(
-            controller: _addressLineController,
-            label: 'Address Line',
-            icon: Icons.home_outlined,
-            maxLines: 2,
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'Please enter your address';
-              }
-              return null;
-            },
-          ),
-          const SizedBox(height: 14),
-          Row(
-            children: [
-              Expanded(
-                child: _buildTextField(
-                  controller: _cityController,
-                  label: 'City',
-                  icon: Icons.location_city_outlined,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Required';
-                    }
-                    return null;
-                  },
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildTextField(
-                  controller: _deliveryStateController,
-                  label: 'State',
-                  icon: Icons.map_outlined,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Required';
-                    }
-                    return null;
-                  },
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          _buildTextField(
-            controller: _landmarkController,
-            label: 'Landmark (Optional)',
-            icon: Icons.place_outlined,
-            validator: (value) => null,
-          ),
-          const SizedBox(height: 14),
-          _buildTextField(
-            controller: _deliveryPhoneController,
-            label: 'Delivery Phone',
-            icon: Icons.phone_in_talk_outlined,
-            keyboardType: TextInputType.phone,
-            validator: (value) {
-              if (value == null || value.trim().isEmpty) {
-                return 'Please enter delivery phone number';
-              }
-              if (value.trim().length < 10) {
-                return 'Phone number must be at least 10 digits';
-              }
-              return null;
-            },
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildReadOnlyEmailSection() {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: kWhite,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.04),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade200,
-              borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(
-              Icons.email_outlined,
-              color: Colors.grey.shade700,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Email Address',
-                  style: TextStyle(fontSize: 11, color: kTextLight),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  widget.user.email,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: kTextDark,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const Icon(Icons.lock_outline, color: kTextLight, size: 18),
-        ],
+
+            const SizedBox(height: 40),
+          ],
+        ),
       ),
     );
   }
@@ -765,55 +596,53 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   Widget _buildTextField({
     required TextEditingController controller,
     required String label,
-    required IconData icon,
     TextInputType? keyboardType,
     int maxLines = 1,
     String? Function(String?)? validator,
   }) {
-    return TextFormField(
-      controller: controller,
-      keyboardType: keyboardType,
-      maxLines: maxLines,
-      validator: validator,
-      style: const TextStyle(fontSize: 14),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: const TextStyle(color: kTextLight, fontSize: 13),
-        prefixIcon: ShaderMask(
-          shaderCallback: (bounds) => kOrangeGradient.createShader(bounds),
-          child: Icon(icon, color: kWhite, size: 20),
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFFF6B35), width: 2),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.red),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.red, width: 2),
-        ),
-        filled: true,
-        fillColor: kAshGray,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextFormField(
+            controller: controller,
+            keyboardType: keyboardType,
+            maxLines: maxLines,
+            validator: validator,
+            style: const TextStyle(fontSize: 15),
+            decoration: InputDecoration(
+              labelText: label,
+              labelStyle: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade600,
+              ),
+              border: UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.grey.shade300),
+              ),
+              enabledBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.grey.shade300),
+              ),
+              focusedBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: Color(0xFFFF6B35), width: 2),
+              ),
+              errorBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.red),
+              ),
+              focusedErrorBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.red, width: 2),
+              ),
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
+              errorStyle: TextStyle(fontSize: 12),
+            ),
+          ),
+        ],
       ),
     );
   }
 
   Widget _buildDropdown({
     required String label,
-    required IconData icon,
     required String? value,
     required String hint,
     required List<DropdownMenuItem<String>> items,
@@ -822,60 +651,57 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     bool isLoading = false,
     bool isEnabled = true,
   }) {
-    return DropdownButtonFormField<String>(
-      value: value,
-      items: items,
-      onChanged: isEnabled ? onChanged : null,
-      validator: validator,
-      isExpanded: true,
-      style: const TextStyle(fontSize: 14, color: kTextDark),
-      decoration: InputDecoration(
-        labelText: label,
-        labelStyle: TextStyle(
-          color: isEnabled ? kTextLight : Colors.grey,
-          fontSize: 13,
-        ),
-        hintText: hint,
-        hintStyle: const TextStyle(color: Colors.grey, fontSize: 14),
-        prefixIcon: ShaderMask(
-          shaderCallback: (bounds) => kOrangeGradient.createShader(bounds),
-          child: Icon(icon, color: kWhite, size: 20),
-        ),
-        suffixIcon: isLoading
-            ? Container(
-                padding: const EdgeInsets.all(16),
-                width: 20,
-                height: 20,
-                child: const CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: Color(0xFFFF6B35),
-                ),
-              )
-            : null,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: Colors.grey.shade300),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Color(0xFFFF6B35), width: 2),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.red),
-        ),
-        focusedErrorBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: Colors.red, width: 2),
-        ),
-        filled: true,
-        fillColor: isEnabled ? kAshGray : Colors.grey.shade200,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          DropdownButtonFormField<String>(
+            value: value,
+            items: items,
+            onChanged: isEnabled ? onChanged : null,
+            validator: validator,
+            isExpanded: true,
+            style: const TextStyle(fontSize: 15, color: Colors.black87),
+            decoration: InputDecoration(
+              labelText: label,
+              labelStyle: TextStyle(
+                fontSize: 14,
+                color: Colors.grey.shade600,
+              ),
+              hintText: hint,
+              hintStyle: TextStyle(color: Colors.grey.shade400),
+              suffixIcon: isLoading
+                  ? Container(
+                      padding: const EdgeInsets.all(12),
+                      width: 20,
+                      height: 20,
+                      child: const CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Color(0xFFFF6B35),
+                      ),
+                    )
+                  : null,
+              border: UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.grey.shade300),
+              ),
+              enabledBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.grey.shade300),
+              ),
+              focusedBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: Color(0xFFFF6B35), width: 2),
+              ),
+              errorBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.red),
+              ),
+              focusedErrorBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: Colors.red, width: 2),
+              ),
+              contentPadding: const EdgeInsets.symmetric(vertical: 12),
+              errorStyle: TextStyle(fontSize: 12),
+            ),
+          ),
+        ],
       ),
     );
   }

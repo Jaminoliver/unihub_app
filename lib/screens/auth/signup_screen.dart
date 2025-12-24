@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../../services/auth_service.dart';
 import '../../services/university_category_services.dart';
+import '../../services/otp_service.dart';
 import '../../models/university_category_models.dart';
 import '../../main.dart';
+import 'welcome_animation_screen.dart';
 import 'login_screen.dart';
+import 'otp_verification_screen.dart';
 
 class SignUpScreen extends StatefulWidget {
   const SignUpScreen({super.key});
@@ -13,7 +16,8 @@ class SignUpScreen extends StatefulWidget {
   State<SignUpScreen> createState() => _SignUpScreenState();
 }
 
-class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMixin {
+class _SignUpScreenState extends State<SignUpScreen>
+    with TickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
   final _fullNameController = TextEditingController();
   final _emailController = TextEditingController();
@@ -24,6 +28,7 @@ class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMix
 
   final AuthService _authService = AuthService();
   final UniversityService _universityService = UniversityService();
+  final OTPService _otpService = OTPService();
 
   bool _isLoading = false;
   bool _obscurePassword = true;
@@ -38,7 +43,7 @@ class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMix
 
   late AnimationController _successAnimationController;
   late AnimationController _errorAnimationController;
-  
+
   final Map<String, String> _stateMapping = {
     'Abia': 'Abia',
     'Adamawa': 'Adamawa',
@@ -100,7 +105,8 @@ class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMix
       print('Loaded ${_universities.length} universities');
     } catch (e) {
       print('Error loading universities: $e');
-      _showErrorSnackBar('Failed to load universities. Please check your connection.');
+      _showErrorSnackBar(
+          'Failed to load universities. Please check your connection.');
     } finally {
       if (mounted) {
         setState(() => _isLoadingUniversities = false);
@@ -141,6 +147,7 @@ class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMix
     super.dispose();
   }
 
+  /// NEW: Handle signup with OTP flow
   Future<void> _handleSignUp() async {
     if (!_formKey.currentState!.validate()) {
       _showErrorAnimation();
@@ -163,33 +170,65 @@ class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMix
     setState(() => _isLoading = true);
 
     try {
-      final dbState = _stateMapping[_selectedState!] ?? _selectedState!;
+      final email = _emailController.text.trim();
 
-      await _authService.signUp(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
-        fullName: _fullNameController.text.trim(),
-        phoneNumber: _phoneController.text.trim(),
-        universityId: _selectedUniversityId!,
-        state: dbState,
-        deliveryAddress: _addressController.text.trim(),
-      );
+      // Step 1: Send OTP
+      await _authService.sendSignupOTP(email);
 
       if (mounted) {
-        await _showSuccessAnimation();
-        
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (_) => const BottomNavBar()),
-          (route) => false,
+        setState(() => _isLoading = false);
+
+        // Step 2: Navigate to OTP screen
+        final dbState = _stateMapping[_selectedState!] ?? _selectedState!;
+
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => OTPVerificationScreen(
+              email: email,
+              otpType: 'signup',
+              title: 'Verify Your Email',
+              subtitle: 'Enter the code we sent to',
+             onVerify: (otp) async {
+  // Step 3: Verify OTP and create account
+  await _authService.verifySignupOTP(
+    email: email,
+    otp: otp,
+    password: _passwordController.text,
+    fullName: _fullNameController.text.trim(),
+    phoneNumber: _phoneController.text.trim(),
+    universityId: _selectedUniversityId!,
+    state: dbState,
+    deliveryAddress: _addressController.text.trim(),
+  );
+
+  if (mounted) {
+    // Navigate to Welcome Animation Screen
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => WelcomeAnimationScreen(
+          userName: _fullNameController.text.trim(),
+        ),
+      ),
+      (route) => false,
+    );
+  }
+},
+              onResend: () async {
+                await _otpService.resendOTP(
+                  email: email,
+                  type: 'signup',
+                );
+              },
+            ),
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
+        setState(() => _isLoading = false);
         _showErrorSnackBar('Sign up failed: ${e.toString()}');
         _showErrorAnimation();
       }
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -197,7 +236,8 @@ class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMix
     await showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => _SuccessDialog(controller: _successAnimationController),
+      builder: (context) =>
+          _SuccessDialog(controller: _successAnimationController),
     );
   }
 
@@ -262,7 +302,10 @@ class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMix
             final offset = _errorAnimationController.value * 10;
             return Transform.translate(
               offset: Offset(
-                offset * ((_errorAnimationController.value * 4).round() % 2 == 0 ? 1 : -1),
+                offset *
+                    ((_errorAnimationController.value * 4).round() % 2 == 0
+                        ? 1
+                        : -1),
                 0,
               ),
               child: child,
@@ -287,7 +330,8 @@ class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMix
                   Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
                           gradient: const LinearGradient(
                             colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)],
@@ -307,7 +351,8 @@ class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMix
                       const Expanded(
                         child: Text(
                           'Join and start shopping',
-                          style: TextStyle(fontSize: 16, color: Color(0xFF6B7280)),
+                          style:
+                              TextStyle(fontSize: 16, color: Color(0xFF6B7280)),
                         ),
                       ),
                     ],
@@ -370,7 +415,8 @@ class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMix
                     decoration: InputDecoration(
                       labelText: 'State',
                       hintText: 'Select your state first',
-                      hintStyle: TextStyle(color: Colors.grey.shade400, fontSize: 14),
+                      hintStyle: TextStyle(
+                          color: Colors.grey.shade400, fontSize: 14),
                       prefixIcon: Container(
                         padding: const EdgeInsets.all(12),
                         child: const FaIcon(
@@ -389,11 +435,13 @@ class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMix
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: Color(0xFFFF6B35), width: 2),
+                        borderSide:
+                            const BorderSide(color: Color(0xFFFF6B35), width: 2),
                       ),
                       filled: true,
                       fillColor: const Color(0xFFFAFAFA),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 16),
                     ),
                     items: _stateMapping.keys.map((state) {
                       return DropdownMenuItem(
@@ -422,7 +470,7 @@ class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMix
                   ),
                   const SizedBox(height: 16),
 
-                  // University Dropdown with enhanced UX
+                  // University Dropdown
                   DropdownButtonFormField<String>(
                     value: _selectedUniversityId,
                     decoration: InputDecoration(
@@ -435,7 +483,7 @@ class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMix
                                   ? 'No universities available'
                                   : 'Select your university',
                       hintStyle: TextStyle(
-                        color: _selectedState == null 
+                        color: _selectedState == null
                             ? const Color(0xFFFF6B35).withOpacity(0.6)
                             : Colors.grey.shade400,
                         fontSize: 14,
@@ -448,7 +496,8 @@ class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMix
                                 height: 20,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFFF6B35)),
+                                  valueColor: AlwaysStoppedAnimation<Color>(
+                                      Color(0xFFFF6B35)),
                                 ),
                               ),
                             )
@@ -462,8 +511,10 @@ class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMix
                                     : const Color(0xFFFF6B35),
                               ),
                             ),
-                      suffixIcon: _selectedState != null && _filteredUniversities.isEmpty
-                          ? const Icon(Icons.info_outline, color: Color(0xFFFF6B35))
+                      suffixIcon: _selectedState != null &&
+                              _filteredUniversities.isEmpty
+                          ? const Icon(Icons.info_outline,
+                              color: Color(0xFFFF6B35))
                           : null,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
@@ -472,20 +523,23 @@ class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMix
                       enabledBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
                         borderSide: BorderSide(
-                          color: _hasTriedToSelectUniversity && _selectedUniversityId == null
+                          color: _hasTriedToSelectUniversity &&
+                                  _selectedUniversityId == null
                               ? const Color(0xFFDC2626)
                               : Colors.grey.shade300,
                         ),
                       ),
                       focusedBorder: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(14),
-                        borderSide: const BorderSide(color: Color(0xFFFF6B35), width: 2),
+                        borderSide:
+                            const BorderSide(color: Color(0xFFFF6B35), width: 2),
                       ),
                       filled: true,
                       fillColor: _selectedState == null
                           ? Colors.grey.shade100
                           : const Color(0xFFFAFAFA),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                      contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 16),
                     ),
                     items: (_filteredUniversities.isNotEmpty)
                         ? _filteredUniversities.map((uni) {
@@ -494,7 +548,8 @@ class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMix
                               child: Tooltip(
                                 message: uni.name,
                                 child: Text(
-                                  _truncateUniversityName(uni.name, uni.shortName),
+                                  _truncateUniversityName(
+                                      uni.name, uni.shortName),
                                   style: const TextStyle(fontSize: 14),
                                   overflow: TextOverflow.ellipsis,
                                   maxLines: 1,
@@ -533,13 +588,16 @@ class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMix
                       }).toList();
                     },
                   ),
-                  
-                  if (_selectedState != null && _filteredUniversities.isEmpty && !_isLoadingUniversities)
+
+                  if (_selectedState != null &&
+                      _filteredUniversities.isEmpty &&
+                      !_isLoadingUniversities)
                     Padding(
                       padding: const EdgeInsets.only(top: 8, left: 16),
                       child: Row(
                         children: [
-                          const Icon(Icons.info_outline, size: 14, color: Color(0xFFFF6B35)),
+                          const Icon(Icons.info_outline,
+                              size: 14, color: Color(0xFFFF6B35)),
                           const SizedBox(width: 6),
                           Expanded(
                             child: Text(
@@ -576,7 +634,8 @@ class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMix
                     label: 'Password',
                     hint: 'Create a password',
                     obscureText: _obscurePassword,
-                    onToggle: () => setState(() => _obscurePassword = !_obscurePassword),
+                    onToggle: () =>
+                        setState(() => _obscurePassword = !_obscurePassword),
                     validator: (value) {
                       if (value == null || value.isEmpty) {
                         return 'Please create a password';
@@ -594,7 +653,8 @@ class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMix
                     label: 'Confirm Password',
                     hint: 'Re-enter your password',
                     obscureText: _obscureConfirmPassword,
-                    onToggle: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+                    onToggle: () => setState(
+                        () => _obscureConfirmPassword = !_obscureConfirmPassword),
                     validator: (value) {
                       if (value != _passwordController.text) {
                         return 'Passwords do not match';
@@ -610,7 +670,8 @@ class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMix
                       onPressed: _isLoading ? null : _handleSignUp,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFFFF6B35),
-                        disabledBackgroundColor: const Color(0xFFFF6B35).withOpacity(0.6),
+                        disabledBackgroundColor:
+                            const Color(0xFFFF6B35).withOpacity(0.6),
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(14),
                         ),
@@ -622,11 +683,12 @@ class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMix
                               height: 24,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2.5,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                valueColor:
+                                    AlwaysStoppedAnimation<Color>(Colors.white),
                               ),
                             )
                           : const Text(
-                              'Create Account',
+                              'Continue',
                               style: TextStyle(
                                 fontSize: 16,
                                 fontWeight: FontWeight.bold,
@@ -711,7 +773,8 @@ class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMix
         ),
         filled: true,
         fillColor: const Color(0xFFFAFAFA),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       ),
       validator: validator,
     );
@@ -766,7 +829,8 @@ class _SignUpScreenState extends State<SignUpScreen> with TickerProviderStateMix
         ),
         filled: true,
         fillColor: const Color(0xFFFAFAFA),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       ),
       validator: validator,
     );
@@ -829,9 +893,9 @@ class _SuccessDialogState extends State<_SuccessDialog> {
             const SizedBox(height: 24),
             FadeTransition(
               opacity: widget.controller,
-              child: Column(
+              child: const Column(
                 children: [
-                  const Text(
+                  Text(
                     'Account Created!',
                     style: TextStyle(
                       fontSize: 24,
@@ -839,9 +903,9 @@ class _SuccessDialogState extends State<_SuccessDialog> {
                       color: Color(0xFF1A1A1A),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Welcome to UniHub!\nPlease check your email to verify.',
+                  SizedBox(height: 8),
+                  Text(
+                    'Welcome to UniHub!',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 14,

@@ -1,22 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_paystack/flutter_paystack.dart';
+import 'package:provider/provider.dart';
 import 'dart:async';
 import 'services/chat_service.dart';
 import 'screens/ai_chat_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
-import 'services/push_notification_service.dart';
+import 'services/push_notification_service.dart' as push_service;
 import 'services/notification_service.dart';
+import 'providers/theme_provider.dart';
+import 'constants/app_theme.dart';
 
 // Screen imports
 import 'screens/splash_screen.dart';
 import 'screens/home_screen.dart';
-import 'screens/cart_screen.dart';
 import 'screens/orders_screen.dart';
 import 'screens/profile_screen.dart';
+import 'screens/cart_screen.dart';
 import 'screens/auth/account_type_selection_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/signup_screen.dart';
@@ -42,7 +44,7 @@ void main() async {
   await paystackPlugin.initialize(publicKey: 'pk_test_611362c58ad79b5446897d88ef3d2f9c8b5b88d6');
   print('✅ Paystack initialized');
 
-  await PushNotificationService().init();
+  await push_service.PushNotificationService().init();
   print('✅ Push notification service initialized');
 
   ChatService().initialize();
@@ -54,7 +56,12 @@ void main() async {
 
   print('🚀 ========== APP INITIALIZATION COMPLETE ==========');
   
-  runApp(const UniHubApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => ThemeProvider(),
+      child: const UniHubApp(),
+    ),
+  );
 }
 
 final supabase = Supabase.instance.client;
@@ -88,37 +95,38 @@ class _UniHubAppState extends State<UniHubApp> {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      debugShowCheckedModeBanner: false,
-      title: 'UniHub',
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF0057D9), brightness: Brightness.light),
-        textTheme: GoogleFonts.interTextTheme(),
-        appBarTheme: const AppBarTheme(centerTitle: false, elevation: 0, backgroundColor: Colors.white, foregroundColor: Colors.black),
-      ),
-      initialRoute: '/',
-      routes: {
-        '/': (context) => const SplashScreen(),
-        '/account_type': (context) => const AccountTypeSelectionScreen(),
-        '/login': (context) => const LoginScreen(),
-        '/signup': (context) => const SignUpScreen(),
-        '/home': (context) => const BottomNavBar(initialIndex: 0),
-        '/profile': (context) => const BottomNavBar(initialIndex: 4),
-        '/cart': (context) => const BottomNavBar(initialIndex: 2),
-        '/categories': (context) => const BottomNavBar(initialIndex: 1),
-        '/orders': (context) => const BottomNavBar(initialIndex: 3),
-      },
-      onUnknownRoute: (settings) {
-        print('❌ ========== UNKNOWN ROUTE ==========');
-        print('❌ Attempted route: ${settings.name}');
-        print('❌ Arguments: ${settings.arguments}');
-        print('❌ This route does not exist in the routes map!');
-        print('❌ Falling back to home screen');
-        print('❌ ========== UNKNOWN ROUTE END ==========');
-        
-        return MaterialPageRoute(
-          builder: (context) => const BottomNavBar(initialIndex: 0),
+    return Consumer<ThemeProvider>(
+      builder: (context, themeProvider, child) {
+        return MaterialApp(
+          debugShowCheckedModeBanner: false,
+          title: 'UniHub',
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: themeProvider.themeMode,
+          initialRoute: '/',
+          routes: {
+            '/': (context) => const SplashScreen(),
+            '/account_type': (context) => const AccountTypeSelectionScreen(),
+            '/login': (context) => const LoginScreen(),
+            '/signup': (context) => const SignUpScreen(),
+            '/home': (context) => const BottomNavBar(initialIndex: 0),
+            '/profile': (context) => const BottomNavBar(initialIndex: 4),
+            '/cart': (context) => const BottomNavBar(initialIndex: 2),
+            '/categories': (context) => const BottomNavBar(initialIndex: 1),
+            '/orders': (context) => const BottomNavBar(initialIndex: 3),
+          },
+          onUnknownRoute: (settings) {
+            print('❌ ========== UNKNOWN ROUTE ==========');
+            print('❌ Attempted route: ${settings.name}');
+            print('❌ Arguments: ${settings.arguments}');
+            print('❌ This route does not exist in the routes map!');
+            print('❌ Falling back to home screen');
+            print('❌ ========== UNKNOWN ROUTE END ==========');
+            
+            return MaterialPageRoute(
+              builder: (context) => const BottomNavBar(initialIndex: 0),
+            );
+          },
         );
       },
     );
@@ -184,17 +192,17 @@ class _BottomNavBarState extends State<BottomNavBar> {
   }
 
   void _setupAuthListener() {
-    _authSubscription = supabase.auth.onAuthStateChange.listen((data) {
-      final session = data.session;
-      if (session == null && mounted) {
-        print('🚪 Auth session ended, logging out');
-        Navigator.of(context).pushNamedAndRemoveUntil(
-          '/account_type',
-          (route) => false,
-        );
-      }
-    });
-  }
+  _authSubscription = supabase.auth.onAuthStateChange.listen((data) {
+    final session = data.session;
+    if (session == null && mounted) {
+      print('🚪 Auth session ended, logging out');
+      Navigator.of(context).pushNamedAndRemoveUntil(
+        '/login',  // ← CHANGED FROM /account_type
+        (route) => false,
+      );
+    }
+  });
+}
 
   void _onItemTapped(int index) {
     print('🔄 ========== TAB CHANGED ==========');
@@ -298,7 +306,7 @@ class _BottomNavBarState extends State<BottomNavBar> {
         ),
         bottomNavigationBar: NavigationBar(
           height: 70,
-          backgroundColor: Colors.white,
+          backgroundColor: Theme.of(context).colorScheme.surface,
           selectedIndex: _selectedIndex,
           onDestinationSelected: _onItemTapped,
           destinations: const [

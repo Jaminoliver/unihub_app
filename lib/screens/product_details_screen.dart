@@ -1,7 +1,7 @@
+// product_details_screen.dart
 import 'package:flutter/material.dart';
 import 'package:carousel_slider/carousel_slider.dart';
 import '../constants/app_colors.dart';
-import '../constants/app_text_styles.dart';
 import '../models/product_model.dart';
 import '../models/review_model.dart';
 import '../services/product_service.dart';
@@ -14,12 +14,17 @@ import '../widgets/related_product_card.dart';
 import 'dart:async';
 import 'dart:convert';
 
+const kOrangeGradient = LinearGradient(
+  colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)],
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+);
+
 class ProductDetailsScreen extends StatefulWidget {
   final ProductModel? product;
   final String? productId;
 
-  const ProductDetailsScreen({super.key, this.product, this.productId})
-      : assert(product != null || productId != null);
+  const ProductDetailsScreen({super.key, this.product, this.productId}) : assert(product != null || productId != null);
 
   @override
   State<ProductDetailsScreen> createState() => _ProductDetailsScreenState();
@@ -41,14 +46,10 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   int _cartItemCount = 0;
   bool _isAddingToCart = false;
   bool _showSuccessMessage = false;
-  Timer? _countdownTimer;
   Timer? _viewUpdateTimer;
-  Duration? _flashSaleTimeLeft;
   bool _isDetailsExpanded = false;
   bool _isReviewsExpanded = false;
   int _totalViews = 0;
-  
-  // Color and Size Selection
   String? _selectedColor;
   String? _selectedSize;
 
@@ -60,7 +61,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
   @override
   void dispose() {
-    _countdownTimer?.cancel();
     _viewUpdateTimer?.cancel();
     super.dispose();
   }
@@ -69,24 +69,17 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     try {
       _product = widget.product ?? await _productService.getProductById(widget.productId!);
       if (_product == null) throw Exception('Product not found');
-      
+
       _productService.incrementViewCount(_product!.id);
       await _viewService.trackProductView(_product!.id);
       _startViewTracking();
-      
+
       final userId = _authService.currentUserId;
       if (userId != null) {
-        final isInWishlist = await _wishlistService.isInWishlist(
-          userId: userId,
-          productId: _product!.id,
-        );
+        final isInWishlist = await _wishlistService.isInWishlist(userId: userId, productId: _product!.id);
         if (mounted) setState(() => _isFavorite = isInWishlist);
       }
-      
-      if (_product!.isFlashSale && _product!.flashSaleEndsAt != null) {
-        _startCountdown(_product!.flashSaleEndsAt!);
-      }
-      
+
       _loadReviews();
       _loadCartCount();
       setState(() => _isLoading = false);
@@ -122,16 +115,6 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     if (mounted) setState(() => _cartItemCount = items.fold(0, (p, i) => p + i.quantity));
   }
 
-  void _startCountdown(DateTime endTime) {
-    _flashSaleTimeLeft = endTime.difference(DateTime.now());
-    _countdownTimer = Timer.periodic(Duration(seconds: 1), (timer) {
-      if (!mounted) return timer.cancel();
-      final newTime = endTime.difference(DateTime.now());
-      setState(() => _flashSaleTimeLeft = newTime.isNegative ? Duration.zero : newTime);
-      if (newTime.isNegative) timer.cancel();
-    });
-  }
-
   Future<void> _toggleFavorite() async {
     final userId = _authService.currentUserId;
     if (userId == null) return;
@@ -147,8 +130,7 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
   Future<void> _addToCart() async {
     if (_isAddingToCart) return;
-    
-    // Validate selections if product has colors/sizes
+
     if (_product!.colors != null && _product!.colors!.isNotEmpty && _selectedColor == null) {
       _showSnackBar('Please select a color', isError: true);
       return;
@@ -157,26 +139,21 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       _showSnackBar('Please select a size', isError: true);
       return;
     }
-    
+
     setState(() => _isAddingToCart = true);
     try {
       final userId = _authService.currentUserId;
       if (userId == null) throw Exception('Login required');
-      
-      await _cartService.addToCart(
-        userId: userId,
-        productId: _product!.id,
-        selectedColor: _selectedColor,
-        selectedSize: _selectedSize,
-      );
-      
+
+      await _cartService.addToCart(userId: userId, productId: _product!.id, selectedColor: _selectedColor, selectedSize: _selectedSize);
+
       await _loadCartCount();
-      
+
       setState(() {
         _isAddingToCart = false;
         _showSuccessMessage = true;
       });
-      
+
       Future.delayed(Duration(seconds: 2), () {
         if (mounted) setState(() => _showSuccessMessage = false);
       });
@@ -190,19 +167,20 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: isError ? Color(0xFFEF4444) : Color(0xFF10B981),
+        backgroundColor: isError ? AppColors.errorRed : AppColors.successGreen,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: EdgeInsets.all(16),
       ),
     );
   }
 
   List<String> _getImageUrls() {
     if (_product == null || _product!.imageUrls.isEmpty) return ['placeholder'];
-    
+
     List<String> urls = [];
     final firstUrl = _product!.imageUrls.first;
-    
+
     if (firstUrl.startsWith('[') || firstUrl.startsWith('"{')) {
       try {
         final cleanUrl = firstUrl.replaceAll('"{', '').replaceAll('}"', '').replaceAll(r'\', '');
@@ -214,14 +192,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     } else {
       urls = _product!.imageUrls;
     }
-    
-    final validUrls = urls.where((url) {
-      return url.isNotEmpty && 
-             !url.contains('placehold.co') && 
-             (url.startsWith('http://') || url.startsWith('https://')) &&
-             url.contains('supabase.co');
-    }).toList();
-    
+
+    final validUrls = urls.where((url) => url.isNotEmpty && !url.contains('placehold.co') && (url.startsWith('http://') || url.startsWith('https://')) && url.contains('supabase.co')).toList();
+
     return validUrls.isEmpty ? ['placeholder'] : validUrls;
   }
 
@@ -229,11 +202,11 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) return _buildLoadingScreen();
-    if (_product == null) return _buildErrorScreen();
+    if (_isLoading) return Scaffold(backgroundColor: AppColors.getBackground(context), body: Center(child: CircularProgressIndicator(color: AppColors.primaryOrange)));
+    if (_product == null) return Scaffold(backgroundColor: AppColors.getBackground(context), body: Center(child: Text('Product not found', style: TextStyle(color: AppColors.getTextMuted(context)))));
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.getBackground(context),
       body: Stack(
         children: [
           CustomScrollView(
@@ -243,26 +216,24 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
                 child: Column(
                   children: [
                     _buildImageCarousel(),
-                    SizedBox(height: 8),
-                    if (_product!.isFlashSale && _flashSaleTimeLeft != null && !_flashSaleTimeLeft!.isNegative)
-                      _buildFlashSaleBanner(),
+                    SizedBox(height: 12),
                     _buildProductInfo(),
-                    SizedBox(height: 8),
-                    _buildUniversityCard(),
-                    SizedBox(height: 8),
-                    _buildPromoBanners(),
-                    SizedBox(height: 16),
-                    _buildDivider(),
-                    SizedBox(height: 16),
-                    _buildDetailsCard(),
-                    SizedBox(height: 16),
-                    _buildDivider(),
-                    SizedBox(height: 16),
-                    _buildReviewsCard(),
-                    SizedBox(height: 16),
-                    _buildDivider(),
-                    SizedBox(height: 16),
-                    _buildRelatedProducts(),
+                    SizedBox(height: 12),
+                    _buildLocation(),
+                    SizedBox(height: 12),
+                    _buildPromos(),
+                    SizedBox(height: 12),
+                    _divider(),
+                    SizedBox(height: 12),
+                    _buildDetails(),
+                    SizedBox(height: 12),
+                    _divider(),
+                    SizedBox(height: 12),
+                    _buildReviews(),
+                    SizedBox(height: 12),
+                    _divider(),
+                    SizedBox(height: 12),
+                    _buildRelated(),
                     SizedBox(height: 90),
                   ],
                 ),
@@ -270,23 +241,9 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             ],
           ),
           _buildBottomBar(),
-          if (_showSuccessMessage) _buildSuccessOverlay(),
+          if (_showSuccessMessage) _buildSuccess(),
         ],
       ),
-    );
-  }
-
-  Widget _buildLoadingScreen() {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: Center(child: CircularProgressIndicator(color: Color(0xFFFF6B35))),
-    );
-  }
-
-  Widget _buildErrorScreen() {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: Center(child: Text('Product not found', style: AppTextStyles.body.copyWith(color: AppColors.textLight))),
     );
   }
 
@@ -294,18 +251,18 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     return SliverAppBar(
       pinned: true,
       elevation: 0,
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.getCardBackground(context),
       expandedHeight: 0,
       toolbarHeight: 56,
       leading: Container(
         margin: EdgeInsets.all(8),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppColors.getCardBackground(context),
           shape: BoxShape.circle,
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8)],
+          border: Border.all(color: AppColors.getBorder(context).withOpacity(0.3)),
         ),
         child: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new_rounded, color: Colors.black, size: 20),
+          icon: Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.getTextPrimary(context), size: 18),
           onPressed: () => Navigator.pop(context),
         ),
       ),
@@ -313,12 +270,12 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
         Container(
           margin: EdgeInsets.all(8),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: AppColors.getCardBackground(context),
             shape: BoxShape.circle,
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 8)],
+            border: Border.all(color: AppColors.getBorder(context).withOpacity(0.3)),
           ),
           child: IconButton(
-            icon: Icon(Icons.share_rounded, color: Color(0xFFFF6B35), size: 20),
+            icon: Icon(Icons.share_rounded, color: AppColors.primaryOrange, size: 18),
             onPressed: () {},
           ),
         ),
@@ -330,55 +287,59 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
   Widget _buildImageCarousel() {
     final images = _getImageUrls();
     final CarouselSliderController carouselController = CarouselSliderController();
-    
+
     return Container(
-      height: 300,
-      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+      height: 280,
+      margin: EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: AppColors.getCardBackground(context),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.getBorder(context).withOpacity(0.3), width: 0.5),
+      ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         child: Stack(
           children: [
             CarouselSlider(
               carouselController: carouselController,
               options: CarouselOptions(
-                height: 300,
+                height: 280,
                 viewportFraction: 1.0,
                 enableInfiniteScroll: images.length > 1,
                 onPageChanged: (i, _) => setState(() => _currentImageIndex = i),
-                scrollPhysics: BouncingScrollPhysics(),
               ),
               items: images.map((url) => url == 'placeholder'
-                ? Center(child: Icon(Icons.shopping_bag_outlined, size: 60, color: AppColors.textLight.withOpacity(0.3)))
-                : Image.network(url, fit: BoxFit.contain, width: double.infinity,
-                    errorBuilder: (_, __, ___) => Center(child: Icon(Icons.image_not_supported_outlined, size: 50, color: AppColors.textLight.withOpacity(0.5))),
-                    loadingBuilder: (_, child, progress) => progress == null ? child : Center(child: CircularProgressIndicator(color: Color(0xFFFF6B35), strokeWidth: 2)),
-                  )).toList(),
+                      ? Center(child: Icon(Icons.shopping_bag_outlined, size: 50, color: AppColors.getTextMuted(context).withOpacity(0.3)))
+                      : Image.network(url, fit: BoxFit.contain, width: double.infinity,
+                          errorBuilder: (_, __, ___) => Center(child: Icon(Icons.image, size: 40, color: AppColors.getTextMuted(context))),
+                          loadingBuilder: (_, child, progress) => progress == null ? child : Center(child: CircularProgressIndicator(color: AppColors.primaryOrange, strokeWidth: 2)))).toList(),
             ),
             if (_product!.discountPercentage != null && _product!.discountPercentage! > 0)
               Positioned(
-                top: 12, right: 12,
+                top: 10,
+                right: 10,
                 child: Container(
-                  padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(color: Color(0xFFFF6B35), borderRadius: BorderRadius.circular(12)),
-                  child: Text('-${_product!.discountPercentage!}%', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: AppColors.primaryOrange, borderRadius: BorderRadius.circular(8)),
+                  child: Text('-${_product!.discountPercentage!}%', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 11)),
                 ),
               ),
             if (images.length > 1)
               Positioned(
-                bottom: 16, left: 0, right: 0,
+                bottom: 12,
+                left: 0,
+                right: 0,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(images.length, (i) => AnimatedContainer(
-                    duration: Duration(milliseconds: 300),
-                    margin: EdgeInsets.symmetric(horizontal: 3),
-                    width: _currentImageIndex == i ? 24 : 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: _currentImageIndex == i ? Color(0xFFFF6B35) : Colors.grey.shade300,
-                      borderRadius: BorderRadius.circular(4),
+                  children: List.generate(
+                    images.length,
+                    (i) => Container(
+                      margin: EdgeInsets.symmetric(horizontal: 3),
+                      width: _currentImageIndex == i ? 20 : 6,
+                      height: 6,
+                      decoration: BoxDecoration(color: _currentImageIndex == i ? AppColors.primaryOrange : AppColors.getBorder(context), borderRadius: BorderRadius.circular(3)),
                     ),
-                  )),
+                  ),
                 ),
               ),
           ],
@@ -387,123 +348,83 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     );
   }
 
-  Widget _buildFlashSaleBanner() {
-    final h = _flashSaleTimeLeft!.inHours;
-    final m = _flashSaleTimeLeft!.inMinutes % 60;
-    final s = _flashSaleTimeLeft!.inSeconds % 60;
-    
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      padding: EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Color(0xFFFF6B35), borderRadius: BorderRadius.circular(12)),
-      child: Row(
-        children: [
-          Icon(Icons.bolt, color: Colors.white, size: 20),
-          SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('FLASH SALE', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12)),
-                Text('Hurry! Limited time', style: TextStyle(color: Colors.white70, fontSize: 10)),
-              ],
-            ),
-          ),
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-            decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
-            child: Text('${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFFFF6B35))),
-          ),
-        ],
-      ),
-    );
-  }
-
- Widget _buildProductInfo() {
-    // --- DEFINE THE VARIABLE HERE ---
-    // This calculates the average rating from the fetched reviews list.
-    final avgRating = _reviews.isEmpty
-        ? 0.0
-        : _reviews.fold<double>(0, (sum, r) => sum + r.rating) / _reviews.length;
-    // --- END ---
+  Widget _buildProductInfo() {
+    final avgRating = _reviews.isEmpty ? 0.0 : _reviews.fold<double>(0, (sum, r) => sum + r.rating) / _reviews.length;
 
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 16),
-      padding: EdgeInsets.all(14),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+      padding: EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppColors.getCardBackground(context),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.getBorder(context).withOpacity(0.3), width: 0.5),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Expanded(child: Text(_product!.name, style: AppTextStyles.heading.copyWith(fontSize: 16, color: Colors.black))),
+              Expanded(child: Text(_product!.name, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.getTextPrimary(context)))),
               GestureDetector(
                 onTap: _toggleFavorite,
                 child: Container(
-                  padding: EdgeInsets.all(8),
-                  decoration: BoxDecoration(color: _isFavorite ? Color(0xFFFF6B35) : AppColors.background, shape: BoxShape.circle),
-                  child: Icon(_isFavorite ? Icons.favorite : Icons.favorite_border, color: _isFavorite ? Colors.white : Color(0xFFFF6B35), size: 18),
+                  padding: EdgeInsets.all(6),
+                  decoration: BoxDecoration(color: _isFavorite ? AppColors.primaryOrange : AppColors.getBackground(context), shape: BoxShape.circle, border: _isFavorite ? null : Border.all(color: AppColors.getBorder(context).withOpacity(0.3))),
+                  child: Icon(_isFavorite ? Icons.favorite : Icons.favorite_border, color: _isFavorite ? Colors.white : AppColors.primaryOrange, size: 18),
                 ),
               ),
             ],
           ),
-          SizedBox(height: 10),
+          SizedBox(height: 8),
           Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
-              Text(_formatPrice(_product!.price), style: AppTextStyles.price.copyWith(fontSize: 22, color: Color(0xFFFF6B35))),
+              Text(_formatPrice(_product!.price), style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: AppColors.primaryOrange)),
               if (_product!.originalPrice != null && _product!.originalPrice! > _product!.price) ...[
                 SizedBox(width: 8),
-                Text(_formatPrice(_product!.originalPrice!), style: TextStyle(fontSize: 13, color: AppColors.textLight, decoration: TextDecoration.lineThrough)),
+                Text(_formatPrice(_product!.originalPrice!), style: TextStyle(fontSize: 13, color: AppColors.getTextMuted(context), decoration: TextDecoration.lineThrough)),
               ],
             ],
           ),
-          SizedBox(height: 10),
+          SizedBox(height: 8),
           Row(
             children: [
               Container(
                 padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: Colors.amber.shade50, borderRadius: BorderRadius.circular(8)),
+                decoration: BoxDecoration(color: Colors.amber.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
                 child: Row(
                   children: [
-                    Icon(Icons.star, color: Colors.amber, size: 13),
+                    Icon(Icons.star, color: Colors.amber, size: 12),
                     SizedBox(width: 4),
-                    
-                    // --- HERE ARE THE CHANGES ---
-                    // It now uses avgRating and _reviews.length
-                    Text('${avgRating.toStringAsFixed(1)}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: Colors.black)),
-                    Text(' (${_reviews.length})', style: TextStyle(fontSize: 10, color: Colors.black87)),
-                    // --- END OF CHANGES ---
+                    Text('${avgRating.toStringAsFixed(1)}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: AppColors.getTextPrimary(context))),
+                    Text(' (${_reviews.length})', style: TextStyle(fontSize: 10, color: AppColors.getTextMuted(context))),
                   ],
                 ),
               ),
-              SizedBox(width: 10),
+              SizedBox(width: 8),
               Container(
                 padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(color: Color(0xFFFF6B35).withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+                decoration: BoxDecoration(color: AppColors.primaryOrange.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
                 child: Row(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.visibility, size: 13, color: Color(0xFFFF6B35)),
+                    Icon(Icons.visibility, size: 12, color: AppColors.primaryOrange),
                     SizedBox(width: 4),
-                    Text('$_totalViews ${_totalViews == 1 ? 'view' : 'views'}', style: TextStyle(fontSize: 11, color: Color(0xFFFF6B35), fontWeight: FontWeight.w600)),
+                    Text('$_totalViews', style: TextStyle(fontSize: 11, color: AppColors.primaryOrange, fontWeight: FontWeight.w600)),
                   ],
                 ),
               ),
             ],
           ),
           if (_product!.stockQuantity <= 10) ...[
-            SizedBox(height: 8),
+            SizedBox(height: 6),
             Container(
-              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-              decoration: BoxDecoration(color: Color(0xFFFF6B35).withOpacity(0.1), borderRadius: BorderRadius.circular(8)),
+              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(color: AppColors.errorRed.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.local_fire_department, size: 13, color: Color(0xFFFF6B35)),
-                  SizedBox(width: 5),
-                  Text('Only ${_product!.stockQuantity} left!', style: TextStyle(color: Color(0xFFFF6B35), fontSize: 11, fontWeight: FontWeight.w600)),
+                  Icon(Icons.local_fire_department, size: 12, color: AppColors.errorRed),
+                  SizedBox(width: 4),
+                  Text('Only ${_product!.stockQuantity} left!', style: TextStyle(color: AppColors.errorRed, fontSize: 11, fontWeight: FontWeight.w600)),
                 ],
               ),
             ),
@@ -513,146 +434,136 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     );
   }
 
-  Widget _buildUniversityCard() {
+  Widget _buildLocation() {
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         children: [
-          Icon(Icons.location_on, color: Color(0xFFFF6B35), size: 20),
-          SizedBox(width: 8),
-          Expanded(child: Text(_product!.universityAbbr ?? _product!.universityName ?? 'Unknown', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black))),
+          Icon(Icons.location_on, color: AppColors.primaryOrange, size: 18),
+          SizedBox(width: 6),
+          Text(_product!.universityAbbr ?? _product!.universityName ?? 'Unknown', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context))),
         ],
       ),
     );
   }
 
-  Widget _buildPromoBanners() {
+  Widget _buildPromos() {
     final promos = [
-      {'icon': Icons.lock_rounded, 'title': 'Secure Payment', 'subtitle': 'Escrow protection'},
-      {'icon': Icons.account_balance_wallet, 'title': 'Part Payment', 'subtitle': 'Available for ₦35k+'},
-      {'icon': Icons.autorenew_rounded, 'title': 'Easy Returns', 'subtitle': 'Full refund guarantee'},
+      {'icon': Icons.lock_rounded, 'title': 'Secure', 'subtitle': 'Escrow'},
+      {'icon': Icons.account_balance_wallet, 'title': 'Part Pay', 'subtitle': '₦35k+'},
+      {'icon': Icons.autorenew_rounded, 'title': 'Returns', 'subtitle': 'Refund'},
     ];
 
     return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      padding: EdgeInsets.symmetric(horizontal: 16),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: promos.map((promo) => Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(promo['icon'] as IconData, color: Color(0xFFFF6B35), size: 28),
-            SizedBox(height: 6),
-            Text(promo['title'] as String, style: TextStyle(color: Colors.black, fontWeight: FontWeight.w600, fontSize: 10), textAlign: TextAlign.center),
-            SizedBox(height: 2),
-            Text(promo['subtitle'] as String, style: TextStyle(color: Colors.black54, fontSize: 9), textAlign: TextAlign.center),
-          ],
-        )).toList(),
+        children: promos
+            .map((p) => Column(
+                  children: [
+                    Icon(p['icon'] as IconData, color: AppColors.primaryOrange, size: 24),
+                    SizedBox(height: 4),
+                    Text(p['title'] as String, style: TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context))),
+                    Text(p['subtitle'] as String, style: TextStyle(fontSize: 9, color: AppColors.getTextMuted(context))),
+                  ],
+                ))
+            .toList(),
       ),
     );
   }
 
-  Widget _buildDivider() => Container(margin: EdgeInsets.symmetric(horizontal: 16), height: 1, color: Colors.grey.shade300);
+  Widget _divider() => Container(margin: EdgeInsets.symmetric(horizontal: 16), height: 0.5, color: AppColors.getBorder(context).withOpacity(0.3));
 
- Widget _buildDetailsCard() {
-  return Padding(
-    padding: EdgeInsets.symmetric(horizontal: 16),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        GestureDetector(
-          onTap: () => setState(() => _isDetailsExpanded = !_isDetailsExpanded),
-          child: Row(
-            children: [
-              Text('Product Details', style: TextStyle(fontSize: 15, color: Colors.black, fontWeight: FontWeight.bold)),
-              Spacer(),
-              Icon(_isDetailsExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, color: Colors.black54, size: 24),
-            ],
-          ),
-        ),
-        SizedBox(height: 10),
-        _buildDetailRow('Condition', _product!.condition.toUpperCase()),
-        if (_product!.brand != null) _buildDetailRow('Brand', _product!.brand!),
-        
-        // Color Selection
-        if (_product!.colors != null && _product!.colors!.isNotEmpty) ...[
-          SizedBox(height: 12),
-          Text('Color', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black)),
-          SizedBox(height: 6),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _product!.colors!.map((color) {
-              final isSelected = _selectedColor == color;
-              return GestureDetector(
-                onTap: () => setState(() => _selectedColor = color),
-                child: Container(
-                  padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: isSelected ? Color(0xFFFF6B35) : Colors.white,
-                    border: Border.all(color: isSelected ? Color(0xFFFF6B35) : Colors.grey.shade300, width: 1.5),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(color, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isSelected ? Colors.white : Colors.black87)),
-                ),
-              );
-            }).toList(),
-          ),
-        ],
-        
-        // Size Selection
-        if (_product!.sizes != null && _product!.sizes!.isNotEmpty) ...[
-          SizedBox(height: 12),
-          Text('Size', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black)),
-          SizedBox(height: 6),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _product!.sizes!.map((size) {
-              final isSelected = _selectedSize == size;
-              return GestureDetector(
-                onTap: () => setState(() => _selectedSize = size),
-                child: Container(
-                  padding: EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: isSelected ? Color(0xFFFF6B35) : Colors.white,
-                    border: Border.all(color: isSelected ? Color(0xFFFF6B35) : Colors.grey.shade300, width: 1.5),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(size, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isSelected ? Colors.white : Colors.black87)),
-                ),
-              );
-            }).toList(),
-          ),
-        ],
-        
-        if (_isDetailsExpanded) ...[
-          // ❌ REMOVED THIS LINE: if (_product!.color != null) _buildDetailRow('Color', _product!.color!),
-          _buildDetailRow('Category', _product!.categoryName ?? 'N/A'),
-          SizedBox(height: 10),
-          Text('Description', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black)),
-          SizedBox(height: 5),
-          Text(_product!.description.isEmpty ? 'No description' : _product!.description, style: TextStyle(fontSize: 11, height: 1.4, color: Colors.black87)),
-        ],
-      ],
-    ),
-  );
-}
-
-  Widget _buildDetailRow(String label, String value) {
+  Widget _buildDetails() {
     return Padding(
-      padding: EdgeInsets.only(bottom: 6),
-      child: Row(
+      padding: EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: 80, child: Text(label, style: TextStyle(fontSize: 11, color: Colors.black87))),
-          Expanded(child: Text(value, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Colors.black))),
+          GestureDetector(
+            onTap: () => setState(() => _isDetailsExpanded = !_isDetailsExpanded),
+            child: Row(
+              children: [
+                Text('Details', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.getTextPrimary(context))),
+                Spacer(),
+                Icon(_isDetailsExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, color: AppColors.getTextMuted(context), size: 20),
+              ],
+            ),
+          ),
+          SizedBox(height: 8),
+          _row('Condition', _product!.condition.toUpperCase()),
+          if (_product!.brand != null) _row('Brand', _product!.brand!),
+          if (_product!.colors != null && _product!.colors!.isNotEmpty) ...[
+            SizedBox(height: 8),
+            Text('Color', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context))),
+            SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: _product!.colors!
+                  .map((color) => GestureDetector(
+                        onTap: () => setState(() => _selectedColor = color),
+                        child: Container(
+                          padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: _selectedColor == color ? AppColors.primaryOrange : AppColors.getCardBackground(context),
+                            border: Border.all(color: _selectedColor == color ? AppColors.primaryOrange : AppColors.getBorder(context)),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(color, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _selectedColor == color ? Colors.white : AppColors.getTextPrimary(context))),
+                        ),
+                      ))
+                  .toList(),
+            ),
+          ],
+          if (_product!.sizes != null && _product!.sizes!.isNotEmpty) ...[
+            SizedBox(height: 8),
+            Text('Size', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context))),
+            SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: _product!.sizes!
+                  .map((size) => GestureDetector(
+                        onTap: () => setState(() => _selectedSize = size),
+                        child: Container(
+                          padding: EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: _selectedSize == size ? AppColors.primaryOrange : AppColors.getCardBackground(context),
+                            border: Border.all(color: _selectedSize == size ? AppColors.primaryOrange : AppColors.getBorder(context)),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: Text(size, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: _selectedSize == size ? Colors.white : AppColors.getTextPrimary(context))),
+                        ),
+                      ))
+                  .toList(),
+            ),
+          ],
+          if (_isDetailsExpanded) ...[
+            _row('Category', _product!.categoryName ?? 'N/A'),
+            SizedBox(height: 8),
+            Text('Description', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context))),
+            SizedBox(height: 4),
+            Text(_product!.description.isEmpty ? 'No description' : _product!.description, style: TextStyle(fontSize: 11, height: 1.4, color: AppColors.getTextMuted(context))),
+          ],
         ],
       ),
     );
   }
 
-  Widget _buildReviewsCard() {
+  Widget _row(String label, String value) => Padding(
+        padding: EdgeInsets.only(bottom: 4),
+        child: Row(
+          children: [
+            SizedBox(width: 70, child: Text(label, style: TextStyle(fontSize: 11, color: AppColors.getTextMuted(context)))),
+            Expanded(child: Text(value, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context)))),
+          ],
+        ),
+      );
+
+  Widget _buildReviews() {
     final avgRating = _reviews.isEmpty ? 0.0 : _reviews.fold<double>(0, (sum, r) => sum + r.rating) / _reviews.length;
-    
+
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: 16),
       child: Column(
@@ -662,77 +573,78 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
             onTap: () => setState(() => _isReviewsExpanded = !_isReviewsExpanded),
             child: Row(
               children: [
-                Text('Reviews', style: TextStyle(fontSize: 15, color: Colors.black, fontWeight: FontWeight.bold)),
-                SizedBox(width: 8),
-                Icon(Icons.star, color: Color(0xFFFF6B35), size: 16),
-                SizedBox(width: 4),
-                Text('${avgRating.toStringAsFixed(1)}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFFFF6B35))),
-                SizedBox(width: 4),
-                Text('(${_reviews.length})', style: TextStyle(fontSize: 13, color: Colors.black54)),
+                Text('Reviews', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.getTextPrimary(context))),
+                SizedBox(width: 6),
+                Icon(Icons.star, color: AppColors.primaryOrange, size: 14),
+                SizedBox(width: 3),
+                Text('${avgRating.toStringAsFixed(1)}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppColors.primaryOrange)),
+                Text(' (${_reviews.length})', style: TextStyle(fontSize: 12, color: AppColors.getTextMuted(context))),
                 Spacer(),
-                Icon(_isReviewsExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, color: Colors.black54, size: 24),
+                Icon(_isReviewsExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down, color: AppColors.getTextMuted(context), size: 20),
               ],
             ),
           ),
-          SizedBox(height: 12),
+          SizedBox(height: 8),
           if (_reviews.isEmpty)
-            Center(child: Padding(padding: EdgeInsets.all(16), child: Column(children: [
-              Icon(Icons.rate_review_outlined, size: 35, color: AppColors.textLight.withOpacity(0.5)),
-              SizedBox(height: 8),
-              Text('No reviews yet', style: TextStyle(color: AppColors.textLight, fontSize: 11)),
-            ])))
-          else
-            ...(_isReviewsExpanded ? _reviews : _reviews.take(2)).map((r) => Container(
-              margin: EdgeInsets.only(bottom: 12),
-              padding: EdgeInsets.all(12),
-              decoration: BoxDecoration(color: Colors.grey.shade50, borderRadius: BorderRadius.circular(12)),
+            Center(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      CircleAvatar(
-                        radius: 16,
-                        backgroundColor: Color(0xFFFF6B35).withOpacity(0.1),
-                        child: Text((r.userName?.isNotEmpty == true) ? r.userName![0].toUpperCase() : 'A',
-                          style: TextStyle(color: Color(0xFFFF6B35), fontWeight: FontWeight.bold, fontSize: 12)),
-                      ),
-                      SizedBox(width: 10),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(r.userName ?? 'Anonymous', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12, color: Colors.black)),
-                            Row(
-                              children: [
-                                ...List.generate(5, (i) => Icon(i < r.ratingInt ? Icons.star : Icons.star_border, color: Color(0xFFFF6B35), size: 12)),
-                                SizedBox(width: 6),
-                                Text(r.timeAgo, style: TextStyle(fontSize: 9, color: Colors.black54)),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 8),
-                  Text(r.comment, style: TextStyle(fontSize: 11, height: 1.4, color: Colors.black87)),
+                  Icon(Icons.rate_review_outlined, size: 30, color: AppColors.getTextMuted(context).withOpacity(0.5)),
+                  SizedBox(height: 6),
+                  Text('No reviews yet', style: TextStyle(color: AppColors.getTextMuted(context), fontSize: 11)),
                 ],
               ),
-            )),
+            )
+          else
+            ...(_isReviewsExpanded ? _reviews : _reviews.take(2)).map((r) => Container(
+                  margin: EdgeInsets.only(bottom: 8),
+                  padding: EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: AppColors.getBackground(context),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppColors.getBorder(context).withOpacity(0.3), width: 0.5),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          CircleAvatar(
+                            radius: 14,
+                            backgroundColor: AppColors.primaryOrange.withOpacity(0.1),
+                            child: Text((r.userName?.isNotEmpty == true) ? r.userName![0].toUpperCase() : 'A', style: TextStyle(color: AppColors.primaryOrange, fontWeight: FontWeight.bold, fontSize: 11)),
+                          ),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(r.userName ?? 'Anonymous', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 11, color: AppColors.getTextPrimary(context))),
+                                Row(
+                                  children: [
+                                    ...List.generate(5, (i) => Icon(i < r.ratingInt ? Icons.star : Icons.star_border, color: AppColors.primaryOrange, size: 11)),
+                                    SizedBox(width: 4),
+                                    Text(r.timeAgo, style: TextStyle(fontSize: 9, color: AppColors.getTextMuted(context))),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 6),
+                      Text(r.comment, style: TextStyle(fontSize: 11, height: 1.4, color: AppColors.getTextPrimary(context))),
+                    ],
+                  ),
+                )),
         ],
       ),
     );
   }
 
-  Widget _buildRelatedProducts() {
+  Widget _buildRelated() {
     return FutureBuilder<List<ProductModel>>(
-      future: _productService.getRelatedProducts(
-        currentProductId: _product!.id,
-        categoryId: _product!.categoryId,
-        universityId: _product!.universityId,
-        limit: 10,
-      ),
+      future: _productService.getRelatedProducts(currentProductId: _product!.id, categoryId: _product!.categoryId, universityId: _product!.universityId, limit: 10),
       builder: (context, snapshot) {
         if (!snapshot.hasData || snapshot.data!.isEmpty) return SizedBox.shrink();
 
@@ -741,24 +653,17 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('You Might Also Like', style: TextStyle(fontSize: 15, color: Colors.black, fontWeight: FontWeight.bold)),
-              SizedBox(height: 12),
+              Text('You Might Like', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.getTextPrimary(context))),
+              SizedBox(height: 8),
               SizedBox(
-                height: 220,
+                height: 200,
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
                   itemCount: snapshot.data!.length,
-                  itemBuilder: (context, index) {
-                    return RelatedProductCard(
-                      product: snapshot.data![index],
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => ProductDetailsScreen(product: snapshot.data![index])),
-                        );
-                      },
-                    );
-                  },
+                  itemBuilder: (context, index) => RelatedProductCard(
+                    product: snapshot.data![index],
+                    onTap: () => Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (context) => ProductDetailsScreen(product: snapshot.data![index]))),
+                  ),
                 ),
               ),
             ],
@@ -774,73 +679,63 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
       left: 0,
       right: 0,
       child: Container(
-        padding: EdgeInsets.all(14).copyWith(bottom: 14 + MediaQuery.of(context).padding.bottom),
+        padding: EdgeInsets.all(12).copyWith(bottom: 12 + MediaQuery.of(context).padding.bottom),
         decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: Offset(0, -2))],
+          color: AppColors.getCardBackground(context),
+          border: Border(top: BorderSide(color: AppColors.getBorder(context).withOpacity(0.3), width: 0.5)),
         ),
         child: Row(
           children: [
             GestureDetector(
               onTap: () => Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil('/cart', (route) => false),
               child: Container(
-                width: 54,
-                height: 54,
+                width: 50,
+                height: 50,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [BoxShadow(color: Color(0xFFFF6B35).withOpacity(0.4), blurRadius: 12, offset: Offset(0, 4))],
+                  color: AppColors.primaryOrange,
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: Stack(
                   alignment: Alignment.center,
                   children: [
-                    Icon(Icons.shopping_cart_rounded, color: Colors.white, size: 24),
+                    Icon(Icons.shopping_cart_rounded, color: Colors.white, size: 22),
                     if (_cartItemCount > 0)
                       Positioned(
-                        right: 8,
-                        top: 8,
+                        right: 6,
+                        top: 6,
                         child: Container(
-                          padding: EdgeInsets.all(4),
-                          decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.2), blurRadius: 4)]),
-                          constraints: BoxConstraints(minWidth: 18, minHeight: 18),
-                          child: Text('$_cartItemCount', style: TextStyle(color: Color(0xFFFF6B35), fontSize: 9, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+                          padding: EdgeInsets.all(3),
+                          decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle),
+                          constraints: BoxConstraints(minWidth: 16, minHeight: 16),
+                          child: Text('$_cartItemCount', style: TextStyle(color: AppColors.primaryOrange, fontSize: 9, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
                         ),
                       ),
                   ],
                 ),
               ),
             ),
-            SizedBox(width: 12),
+            SizedBox(width: 10),
             Expanded(
               child: SizedBox(
-                height: 54,
-                child: Container(
-                  decoration: BoxDecoration(
-                    gradient: _product?.isAvailable == true ? LinearGradient(colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)], begin: Alignment.topLeft, end: Alignment.bottomRight) : null,
-                    color: _product?.isAvailable == true ? null : Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(14),
-                    boxShadow: _product?.isAvailable == true ? [BoxShadow(color: Color(0xFFFF6B35).withOpacity(0.4), blurRadius: 12, offset: Offset(0, 4))] : null,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: _product?.isAvailable == true ? _addToCart : null,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _product?.isAvailable == true ? AppColors.primaryOrange : AppColors.getBorder(context),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    elevation: 0,
                   ),
-                  child: ElevatedButton(
-                    onPressed: _product?.isAvailable == true ? _addToCart : null,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.transparent,
-                      disabledBackgroundColor: Colors.transparent,
-                      shadowColor: Colors.transparent,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                      elevation: 0,
-                    ),
-                    child: _isAddingToCart
-                        ? SizedBox(width: 22, height: 22, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2.5))
-                        : Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(Icons.shopping_bag_rounded, size: 20, color: Colors.white),
-                              SizedBox(width: 10),
-                              Text(_product?.isAvailable == true ? 'Add to Cart' : 'Out of Stock', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white)),
-                            ],
-                          ),
-                  ),
+                  child: _isAddingToCart
+                      ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.shopping_bag_rounded, size: 18),
+                            SizedBox(width: 8),
+                            Text(_product?.isAvailable == true ? 'Add to Cart' : 'Out of Stock', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                          ],
+                        ),
                 ),
               ),
             ),
@@ -850,31 +745,23 @@ class _ProductDetailsScreenState extends State<ProductDetailsScreen> {
     );
   }
 
-  Widget _buildSuccessOverlay() {
+  Widget _buildSuccess() {
     return Positioned(
-      top: 100,
+      top: 80,
       left: 0,
       right: 0,
       child: Center(
-        child: AnimatedOpacity(
-          opacity: _showSuccessMessage ? 1.0 : 0.0,
-          duration: Duration(milliseconds: 300),
-          child: Container(
-            margin: EdgeInsets.symmetric(horizontal: 40),
-            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [Color(0xFF10B981), Color(0xFF059669)]),
-              borderRadius: BorderRadius.circular(12),
-              boxShadow: [BoxShadow(color: Color(0xFF10B981).withOpacity(0.4), blurRadius: 12, offset: Offset(0, 4))],
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.check_circle_rounded, color: Colors.white, size: 22),
-                SizedBox(width: 10),
-                Text('Added to Cart!', style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
-              ],
-            ),
+        child: Container(
+          margin: EdgeInsets.symmetric(horizontal: 30),
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(color: AppColors.successGreen, borderRadius: BorderRadius.circular(10)),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.check_circle_rounded, color: Colors.white, size: 20),
+              SizedBox(width: 8),
+              Text('Added to Cart!', style: TextStyle(color: Colors.white, fontSize: 13, fontWeight: FontWeight.bold)),
+            ],
           ),
         ),
       ),

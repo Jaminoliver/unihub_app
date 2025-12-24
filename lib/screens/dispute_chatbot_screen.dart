@@ -12,7 +12,15 @@ import '../widgets/dispute_chatbot_widgets.dart';
 
 class DisputeChatbotScreen extends StatefulWidget {
   final String? existingDisputeId;
-  const DisputeChatbotScreen({Key? key, this.existingDisputeId}) : super(key: key);
+  final String? preSelectedReason;
+  final String? preSelectedReasonLabel;
+  
+  const DisputeChatbotScreen({
+    Key? key, 
+    this.existingDisputeId,
+    this.preSelectedReason,
+    this.preSelectedReasonLabel,
+  }) : super(key: key);
 
   @override
   State<DisputeChatbotScreen> createState() => _DisputeChatbotScreenState();
@@ -202,9 +210,11 @@ class _DisputeChatbotScreenState extends State<DisputeChatbotScreen> {
       
       if (dispute.disputeReason != null) {
         final reasons = _disputeService.getDisputeReasons();
-        final reasonKey = int.tryParse(dispute.disputeReason.toString());
-        final reasonLabel = reasonKey != null ? reasons[reasonKey]?.toString() : null;
-        disputeDetails += '⚠️ **Reason:** ${reasonLabel ?? 'Issue reported'}\n\n';
+        final reasonData = reasons.firstWhere(
+          (r) => r['value'] == dispute.disputeReason,
+          orElse: () => {'label': 'Issue reported'},
+        );
+        disputeDetails += '⚠️ **Reason:** ${reasonData['label']}\n\n';
       }
       
       if (dispute.description != null && dispute.description!.isNotEmpty) {
@@ -465,6 +475,19 @@ class _DisputeChatbotScreenState extends State<DisputeChatbotScreen> {
   }
 
   void _showReasonSelection() {
+    // AUTO-SELECT if pre-selected reason provided
+    if (widget.preSelectedReason != null && widget.preSelectedReasonLabel != null) {
+      setState(() {
+        selectedReason = widget.preSelectedReason;
+        currentStep = 2;
+      });
+      _addUserMessage(widget.preSelectedReasonLabel!);
+      _saveState();
+      Future.delayed(Duration(milliseconds: 600), _askForDescription);
+      return;
+    }
+    
+    // Normal flow - show reason chips
     setState(() {
       isTyping = true;
       currentStep = 2;

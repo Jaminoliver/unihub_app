@@ -115,7 +115,7 @@ class _SpecialDealProductsScreenState extends State<SpecialDealProductsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Error: ${e.toString()}'),
-            backgroundColor: Colors.red,
+            backgroundColor: AppColors.errorRed,
           ),
         );
       }
@@ -156,12 +156,12 @@ class _SpecialDealProductsScreenState extends State<SpecialDealProductsScreen> {
     return Row(
       children: [
         ...List.generate(5, (i) {
-          if (i < fullStars) return Icon(Icons.star, size: size, color: Color(0xFFFF6B35));
-          if (i == fullStars && hasHalfStar) return Icon(Icons.star_half, size: size, color: Color(0xFFFF6B35));
-          return Icon(Icons.star_border, size: size, color: Colors.grey.shade300);
+          if (i < fullStars) return Icon(Icons.star, size: size, color: AppColors.primaryOrange);
+          if (i == fullStars && hasHalfStar) return Icon(Icons.star_half, size: size, color: AppColors.primaryOrange);
+          return Icon(Icons.star_border, size: size, color: AppColors.getBorder(context));
         }),
         const SizedBox(width: 3),
-        Text('${displayRating.toStringAsFixed(1)}', style: TextStyle(fontSize: size - 2, color: AppColors.textLight, fontWeight: FontWeight.w500)),
+        Text('${displayRating.toStringAsFixed(1)}', style: TextStyle(fontSize: size - 2, color: AppColors.getTextMuted(context), fontWeight: FontWeight.w500)),
       ],
     );
   }
@@ -190,14 +190,14 @@ class _SpecialDealProductsScreenState extends State<SpecialDealProductsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('"${product.name}" added to cart!'),
           duration: const Duration(seconds: 2),
-          backgroundColor: const Color(0xFF10B981),
+          backgroundColor: AppColors.successGreen,
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to add: ${e.toString()}'), backgroundColor: Colors.red));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to add: ${e.toString()}'), backgroundColor: AppColors.errorRed));
       }
     } finally {
       if (mounted) setState(() => _isAddingToCartId = null);
@@ -207,11 +207,19 @@ class _SpecialDealProductsScreenState extends State<SpecialDealProductsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.getBackground(context),
       appBar: AppBar(
-        title: Text(widget.dealTitle, style: AppTextStyles.heading.copyWith(fontSize: 18)),
-        backgroundColor: AppColors.white,
-        elevation: 0.3,
+        title: Text(
+          widget.dealTitle,
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.getTextPrimary(context)),
+        ),
+        backgroundColor: AppColors.getCardBackground(context),
+        elevation: 0,
+        iconTheme: IconThemeData(color: AppColors.getTextPrimary(context)),
+        bottom: PreferredSize(
+          preferredSize: Size.fromHeight(1),
+          child: Divider(height: 1, color: AppColors.getBorder(context).withOpacity(0.3)),
+        ),
       ),
       body: _isLoading
           ? Center(child: UniHubLoader(size: 80))
@@ -222,7 +230,7 @@ class _SpecialDealProductsScreenState extends State<SpecialDealProductsScreen> {
                 )
               : RefreshIndicator(
                   onRefresh: _loadData,
-                  color: AppColors.primary,
+                  color: AppColors.primaryOrange,
                   child: GridView.builder(
                     padding: const EdgeInsets.all(8),
                     physics: const AlwaysScrollableScrollPhysics(),
@@ -245,10 +253,14 @@ class _SpecialDealProductsScreenState extends State<SpecialDealProductsScreen> {
     final isAddingToCart = _isAddingToCartId == product.id;
     
     return Container(
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+      decoration: BoxDecoration(
+        color: AppColors.getCardBackground(context),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.getBorder(context).withOpacity(0.3), width: 0.5),
+      ),
       child: InkWell(
         onTap: () => _navigateToProductDetails(product),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -256,70 +268,78 @@ class _SpecialDealProductsScreenState extends State<SpecialDealProductsScreen> {
               child: Stack(
                 children: [
                   ClipRRect(
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
                     child: CachedNetworkImage(
                       imageUrl: product.imageUrls.isNotEmpty ? product.imageUrls.first : 'https://placehold.co/600x400/eeeeee/cccccc?text=No+Image',
                       width: double.infinity,
                       height: double.infinity,
                       fit: BoxFit.cover,
-                      placeholder: (context, url) => Container(color: AppColors.background, child: Icon(Icons.image, color: AppColors.textLight.withOpacity(0.5))),
-                      errorWidget: (context, url, error) => Container(color: AppColors.background, child: Icon(Icons.shopping_bag_outlined, size: 50, color: Color(0xFFFF6B35).withOpacity(0.3))),
+                      placeholder: (context, url) => Container(
+                        color: AppColors.getBackground(context),
+                        child: Icon(Icons.image, color: AppColors.getTextMuted(context)),
+                      ),
+                      errorWidget: (context, url, error) => Container(
+                        color: AppColors.getBackground(context),
+                        child: Icon(Icons.shopping_bag_outlined, size: 50, color: AppColors.primaryOrange.withOpacity(0.3)),
+                      ),
                     ),
                   ),
                   if (product.hasDiscount || product.discountPercentage != null)
                     Positioned(
-                      top: 8, 
-                      right: 8, 
+                      top: 6, 
+                      right: 6, 
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4), 
-                        decoration: BoxDecoration(color: Color(0xFFFF6B35), borderRadius: BorderRadius.circular(8)), 
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3), 
+                        decoration: BoxDecoration(color: AppColors.primaryOrange, borderRadius: BorderRadius.circular(6)), 
                         child: Text(
                           '-${product.discountPercentage ?? ((product.originalPrice! - product.price) / product.originalPrice! * 100).round()}%', 
-                          style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)
+                          style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)
                         )
                       )
                     ),
                   Positioned(
-                    top: 8, 
-                    left: 8, 
+                    top: 6, 
+                    left: 6, 
                     child: GestureDetector(
                       onTap: () => _toggleFavorite(product.id), 
                       child: Container(
-                        padding: const EdgeInsets.all(6), 
-                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.9), shape: BoxShape.circle), 
+                        padding: const EdgeInsets.all(5), 
+                        decoration: BoxDecoration(
+                          color: AppColors.getCardBackground(context).withOpacity(0.9),
+                          shape: BoxShape.circle,
+                        ), 
                         child: Icon(
                           isFavorite ? Icons.favorite : Icons.favorite_border, 
-                          color: isFavorite ? Colors.red : Colors.grey.shade600, 
-                          size: 16
+                          color: isFavorite ? Colors.red : AppColors.getTextMuted(context), 
+                          size: 15
                         )
                       )
                     )
                   ),
                   Positioned(
-                    bottom: 8, 
-                    right: 8, 
+                    bottom: 6, 
+                    right: 6, 
                     child: GestureDetector(
                       onTap: () => _toggleCart(product), 
                       child: Container(
-                        padding: const EdgeInsets.all(6), 
+                        padding: const EdgeInsets.all(5), 
                         decoration: BoxDecoration(
-                          color: isInCart ? Color(0xFFFF6B35) : Colors.white.withOpacity(0.9), 
+                          color: isInCart ? AppColors.primaryOrange : AppColors.getCardBackground(context).withOpacity(0.9), 
                           shape: BoxShape.circle
                         ), 
                         child: isAddingToCart 
-                          ? Container(
-                              width: 16, 
-                              height: 16, 
-                              padding: const EdgeInsets.all(2.0), 
+                          ? SizedBox(
+                              width: 15, 
+                              height: 15, 
                               child: CircularProgressIndicator(
-                                color: isInCart ? Colors.white : Color(0xFFFF6B35), 
+                                color: isInCart ? Colors.white : AppColors.primaryOrange, 
                                 strokeWidth: 2
                               )
                             ) 
                           : Icon(
                               isInCart ? Icons.check : Icons.add_shopping_cart, 
-                              color: isInCart ? Colors.white : Color(0xFFFF6B35), 
-                              size: 16
+                              color: isInCart ? Colors.white : AppColors.primaryOrange, 
+                              size: 15
                             )
                       )
                     )
@@ -334,33 +354,33 @@ class _SpecialDealProductsScreenState extends State<SpecialDealProductsScreen> {
                 children: [
                   Text(
                     product.name, 
-                    style: AppTextStyles.body.copyWith(
+                    style: TextStyle(
                       fontSize: 13, 
-                      color: AppColors.textDark, 
-                      fontWeight: FontWeight.bold
+                      color: AppColors.getTextPrimary(context), 
+                      fontWeight: FontWeight.w600
                     ), 
                     maxLines: 2, 
                     overflow: TextOverflow.ellipsis
                   ),
-                  const SizedBox(height: 3),
+                  const SizedBox(height: 4),
                   Row(
                     children: [
                       Text(
                         _formatPrice(product.price), 
-                        style: AppTextStyles.price.copyWith(
+                        style: TextStyle(
                           fontSize: 14, 
                           fontWeight: FontWeight.bold, 
-                          color: Color(0xFFFF6B35)
+                          color: AppColors.primaryOrange
                         )
                       ),
                       if (product.hasDiscount && product.originalPrice != null) ...[
-                        const SizedBox(width: 3), 
+                        const SizedBox(width: 4), 
                         Flexible(
                           child: Text(
                             _formatPrice(product.originalPrice!), 
                             style: TextStyle(
                               fontSize: 10, 
-                              color: AppColors.textLight, 
+                              color: AppColors.getTextMuted(context), 
                               decoration: TextDecoration.lineThrough
                             ), 
                             overflow: TextOverflow.ellipsis, 
@@ -370,24 +390,22 @@ class _SpecialDealProductsScreenState extends State<SpecialDealProductsScreen> {
                       ],
                     ],
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 4),
                   Row(
                     children: [
-                      Icon(Icons.location_on, size: 10, color: AppColors.textLight), 
+                      Icon(Icons.location_on, size: 10, color: AppColors.primaryOrange), 
                       const SizedBox(width: 2), 
                       Expanded(
                         child: Text(
-                          product.universityAbbr?.isNotEmpty == true 
-                            ? product.universityAbbr! 
-                            : product.universityName ?? 'UniHub', 
-                          style: TextStyle(fontSize: 9, color: AppColors.textLight), 
+                          product.universityAbbr ?? product.universityName ?? 'N/A', 
+                          style: TextStyle(fontSize: 9, color: AppColors.getTextMuted(context), fontWeight: FontWeight.w500), 
                           maxLines: 1, 
                           overflow: TextOverflow.ellipsis
                         )
                       )
                     ]
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 3),
                   _buildRatingStars(
                     rating: product.averageRating, 
                     reviewCount: product.reviewCount, 

@@ -46,7 +46,7 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> with 
         return false;
       },
       child: Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.getBackground(context),
         body: SafeArea(
           child: Column(
             children: [
@@ -62,9 +62,9 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> with 
                           width: 120,
                           height: 120,
                           decoration: BoxDecoration(
-                            color: Colors.green,
+                            color: AppColors.successGreen,
                             shape: BoxShape.circle,
-                            boxShadow: [BoxShadow(color: Colors.green.withOpacity(0.3), blurRadius: 20, spreadRadius: 5)],
+                            boxShadow: [BoxShadow(color: AppColors.successGreen.withOpacity(0.3), blurRadius: 20, spreadRadius: 5)],
                           ),
                           child: Icon(Icons.check, size: 70, color: Colors.white),
                         ),
@@ -74,10 +74,10 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> with 
                         opacity: _fadeAnimation,
                         child: Column(
                           children: [
-                            Text('Order Confirmed!', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: Colors.black)),
+                            Text('Order Confirmed!', style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold, color: AppColors.getTextPrimary(context))),
                             SizedBox(height: 8),
                             Text('Your ${widget.orders.length} order${widget.orders.length > 1 ? 's have' : ' has'} been placed successfully', 
-                              style: TextStyle(fontSize: 14, color: Colors.grey[600]), textAlign: TextAlign.center),
+                              style: TextStyle(fontSize: 14, color: AppColors.getTextMuted(context)), textAlign: TextAlign.center),
                           ],
                         ),
                       ),
@@ -101,9 +101,9 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> with 
     return Container(
       padding: EdgeInsets.all(20),
       decoration: BoxDecoration(
-        gradient: LinearGradient(colors: [Color(0xFFFF6B35), Color(0xFFFF8C42)]),
+        gradient: LinearGradient(colors: [AppColors.primaryOrange, Color(0xFFFF8C42)]),
         borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Color(0xFFFF6B35).withOpacity(0.3), blurRadius: 15, offset: Offset(0, 8))],
+        boxShadow: [BoxShadow(color: AppColors.primaryOrange.withOpacity(0.3), blurRadius: 15, offset: Offset(0, 8))],
       ),
       child: Column(
         children: [
@@ -146,55 +146,124 @@ class _OrderConfirmationScreenState extends State<OrderConfirmationScreen> with 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Order Details', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black)),
-        SizedBox(height: 16),
+        Padding(
+          padding: EdgeInsets.only(left: 4, bottom: 12),
+          child: Text('Order Details', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.getTextPrimary(context))),
+        ),
         ...widget.orders.map((order) => _buildOrderCard(order)),
       ],
     );
   }
 
-Widget _buildOrderCard(OrderModel order) {
-  return Container(
-    margin: EdgeInsets.only(bottom: 12),
-    padding: EdgeInsets.all(16),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: Colors.grey.shade200),
-      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: Offset(0, 2))],
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Icon(Icons.receipt_long, size: 16, color: Color(0xFFFF6B35)),
-            SizedBox(width: 8),
-            Expanded(
-              child: Text(order.orderNumber, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, fontFamily: 'monospace', color: Color(0xFFFF6B35))),
-            ),
-          ],
-        ),
-        if (order.deliveryCode != null && order.deliveryCode!.isNotEmpty) ...[
-          SizedBox(height: 12),
-          Container(
-            padding: EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.green[50],
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.green[200]!),
-            ),
+  Widget _buildOrderCard(OrderModel order) {
+    return Container(
+      margin: EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: AppColors.getCardBackground(context),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppColors.getBorder(context).withOpacity(0.3), width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: EdgeInsets.all(14),
             child: Row(
               children: [
-                Icon(Icons.lock, size: 16, color: Colors.green[700]),
+                Icon(Icons.receipt_long, size: 16, color: AppColors.primaryOrange),
                 SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    order.orderNumber,
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, fontFamily: 'monospace', color: AppColors.primaryOrange),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          if (order.deliveryCode != null && order.deliveryCode!.isNotEmpty) ...[
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 14),
+              child: Container(
+                padding: EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppColors.successGreen.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.successGreen.withOpacity(0.3)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.lock, size: 16, color: AppColors.successGreen),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('Delivery Code', style: TextStyle(fontSize: 10, color: AppColors.successGreen, fontWeight: FontWeight.w600)),
+                          SizedBox(height: 2),
+                          Text(
+                            order.deliveryCode!,
+                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.successGreen, fontFamily: 'monospace', letterSpacing: 4),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            SizedBox(height: 12),
+          ],
+
+          Divider(height: 1, color: AppColors.getBorder(context).withOpacity(0.3)),
+
+          Padding(
+            padding: EdgeInsets.all(14),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: order.productImageUrl != null
+                      ? Image.network(
+                          order.productImageUrl!,
+                          width: 60,
+                          height: 60,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) => _placeholder(),
+                        )
+                      : _placeholder(),
+                ),
+                SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Delivery Code', style: TextStyle(fontSize: 10, color: Colors.green[800], fontWeight: FontWeight.w600)),
-                      SizedBox(height: 2),
-                      Text(order.deliveryCode!, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.green[900], fontFamily: 'monospace', letterSpacing: 4)),
+                      Text(
+                        order.productName ?? 'Product',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context)),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: [
+                          _buildDetailChip('Qty: ${order.quantity}'),
+                          if (order.selectedSize != null && order.selectedSize!.isNotEmpty)
+                            _buildDetailChip('Size: ${order.selectedSize}'),
+                          if (order.selectedColor != null && order.selectedColor!.isNotEmpty)
+                            _buildDetailChip('Color: ${order.selectedColor}'),
+                          _buildPaymentChip(order.paymentMethod),
+                        ],
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        _formatPrice(order.totalAmount),
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.primaryOrange),
+                      ),
                     ],
                   ),
                 ),
@@ -202,67 +271,62 @@ Widget _buildOrderCard(OrderModel order) {
             ),
           ),
         ],
-        Divider(height: 20),
-        Row(
-          children: [
-            if (order.productImageUrl != null)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.network(order.productImageUrl!, width: 50, height: 50, fit: BoxFit.cover, 
-                  errorBuilder: (_, __, ___) => Container(width: 50, height: 50, color: Colors.grey[200], child: Icon(Icons.image, size: 20, color: Colors.grey[400]))),
-              )
-            else
-              Container(width: 50, height: 50, decoration: BoxDecoration(color: Colors.grey[200], borderRadius: BorderRadius.circular(8)), 
-                child: Icon(Icons.image, size: 20, color: Colors.grey[400])),
-            SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(order.productName ?? 'Product', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
-                  SizedBox(height: 4),
-                  Text('Qty: ${order.quantity}', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
-                  // Show size if selected
-                  if (order.selectedSize != null) ...[
-                    SizedBox(height: 2),
-                    Text('Size: ${order.selectedSize}', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
-                  ],
-                  // Show color if selected
-                  if (order.selectedColor != null) ...[
-                    SizedBox(height: 2),
-                    Text('Color: ${order.selectedColor}', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
-                  ],
-                ],
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(_formatPrice(order.totalAmount), style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFFFF6B35))),
-                SizedBox(height: 4),
-                Container(
-                  padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: _getPaymentColor(order.paymentMethod).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(_getPaymentLabel(order.paymentMethod), style: TextStyle(fontSize: 9, fontWeight: FontWeight.w600, color: _getPaymentColor(order.paymentMethod))),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ],
-    ),
-  );
-}
+      ),
+    );
+  }
+
+  Widget _placeholder() {
+    return Container(
+      width: 60,
+      height: 60,
+      decoration: BoxDecoration(
+        color: AppColors.getBackground(context),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppColors.getBorder(context).withOpacity(0.3)),
+      ),
+      child: Icon(Icons.image, size: 24, color: AppColors.getTextMuted(context)),
+    );
+  }
+
+  Widget _buildDetailChip(String label) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppColors.getTextMuted(context).withOpacity(0.1),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: AppColors.getTextMuted(context).withOpacity(0.3)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: AppColors.getTextMuted(context)),
+      ),
+    );
+  }
+
+  Widget _buildPaymentChip(String method) {
+    final color = _getPaymentColor(method);
+    final label = _getPaymentLabel(method);
+    
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: color),
+      ),
+    );
+  }
 
   Widget _buildBottomBar() {
     return Container(
       padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: Offset(0, -2))],
+        color: AppColors.getCardBackground(context),
+        border: Border(top: BorderSide(color: AppColors.getBorder(context).withOpacity(0.3))),
       ),
       child: SafeArea(
         top: false,
@@ -272,38 +336,39 @@ Widget _buildOrderCard(OrderModel order) {
           child: ElevatedButton(
             onPressed: _navigateToOrders,
             style: ElevatedButton.styleFrom(
-              backgroundColor: Color(0xFFFF6B35),
+              backgroundColor: AppColors.primaryOrange,
+              foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               elevation: 0,
             ),
-            child: Text('View My Orders', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+            child: Text('View My Orders', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           ),
         ),
       ),
     );
   }
 
- void _navigateToOrders() {
-  Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(
-    '/orders',
-    (route) => false,
-  );
-}
+  void _navigateToOrders() {
+    Navigator.of(context, rootNavigator: true).pushNamedAndRemoveUntil(
+      '/orders',
+      (route) => false,
+    );
+  }
 
   Color _getPaymentColor(String method) {
     switch (method) {
-      case 'full': return Colors.green;
-      case 'half': return Colors.orange;
-      case 'pay_on_delivery': return Colors.blue;
-      default: return Colors.grey;
+      case 'full': return AppColors.successGreen;
+      case 'half': return Color(0xFFF59E0B);
+      case 'pay_on_delivery': return Color(0xFF3B82F6);
+      default: return AppColors.getTextMuted(context);
     }
   }
 
   String _getPaymentLabel(String method) {
     switch (method) {
-      case 'full': return 'FULL';
-      case 'half': return 'HALF';
-      case 'pay_on_delivery': return 'POD';
+      case 'full': return 'Full Payment';
+      case 'half': return 'Half Payment';
+      case 'pay_on_delivery': return 'Pay on Delivery';
       default: return method.toUpperCase();
     }
   }

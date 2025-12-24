@@ -22,20 +22,14 @@ class _HelpAndSupportScreenState extends State<HelpAndSupportScreen> {
     super.dispose();
   }
 
-  void _showComingSoon(String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Row(
-          children: [
-            Icon(Icons.info_outline, color: Colors.white, size: 20),
-            SizedBox(width: 12),
-            Text('$feature coming soon!'),
-          ],
+  void _navigateToDispute(String reasonValue, String reasonLabel) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => DisputeChatbotScreen(
+          preSelectedReason: reasonValue,
+          preSelectedReasonLabel: reasonLabel,
         ),
-        backgroundColor: AppColors.primaryOrange,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        margin: EdgeInsets.all(16),
       ),
     );
   }
@@ -147,31 +141,31 @@ class _HelpAndSupportScreenState extends State<HelpAndSupportScreen> {
               icon: Icons.refresh_outlined,
               label: 'Return item',
               color: AppColors.warningYellow,
-              onTap: () => _showComingSoon('Returns'),
+              onTap: () => _navigateToDispute('refund_not_received', 'Return/Refund Request'),
             ),
             _buildIssueChip(
               icon: Icons.payment_outlined,
               label: 'Payment issue',
               color: AppColors.successGreen,
-              onTap: () => _showComingSoon('Payment help'),
+              onTap: () => _navigateToDispute('payment_issue', 'Payment Issue'),
             ),
             _buildIssueChip(
               icon: Icons.inventory_2_outlined,
               label: 'Wrong item',
               color: AppColors.errorRed,
-              onTap: () => _showComingSoon('Wrong item help'),
+              onTap: () => _navigateToDispute('wrong_item_received', 'Wrong Item Received'),
             ),
             _buildIssueChip(
               icon: Icons.chat_bubble_outline,
               label: 'Seller not responding',
               color: Color(0xFF8B5CF6),
-              onTap: () => _showComingSoon('Seller communication'),
+              onTap: () => _navigateToDispute('seller_not_shipping', 'Seller Not Responding'),
             ),
             _buildIssueChip(
               icon: Icons.cancel_outlined,
               label: 'Cancel order',
               color: AppColors.textLight,
-              onTap: () => _showComingSoon('Order cancellation'),
+              onTap: () => _navigateToDispute('other', 'Order Cancellation Request'),
             ),
           ],
         ),
@@ -235,7 +229,7 @@ class _HelpAndSupportScreenState extends State<HelpAndSupportScreen> {
           title: 'Shipping & Delivery',
           subtitle: 'Track orders, delivery times',
           color: AppColors.infoBlue,
-          onTap: () => _showComingSoon('Shipping & Delivery'),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => TrackOrdersScreen())),
         ),
         SizedBox(height: 10),
         _buildTopicCard(
@@ -243,7 +237,7 @@ class _HelpAndSupportScreenState extends State<HelpAndSupportScreen> {
           title: 'Returns & Refunds',
           subtitle: 'Return policy, refund status',
           color: AppColors.warningYellow,
-          onTap: () => _showComingSoon('Returns & Refunds'),
+          onTap: () => _navigateToDispute('refund_not_received', 'Return/Refund Request'),
         ),
         SizedBox(height: 10),
         _buildTopicCard(
@@ -251,7 +245,7 @@ class _HelpAndSupportScreenState extends State<HelpAndSupportScreen> {
           title: 'Account & Settings',
           subtitle: 'Manage profile, security',
           color: AppColors.successGreen,
-          onTap: () => _showComingSoon('Account help'),
+          onTap: () => Navigator.pushNamed(context, '/settings'),
         ),
         SizedBox(height: 10),
         _buildTopicCard(
@@ -259,7 +253,7 @@ class _HelpAndSupportScreenState extends State<HelpAndSupportScreen> {
           title: 'Payment Methods',
           subtitle: 'Add cards, payment issues',
           color: Color(0xFF8B5CF6),
-          onTap: () => _showComingSoon('Payment help'),
+          onTap: () => _navigateToDispute('payment_issue', 'Payment Issue'),
         ),
       ],
     );

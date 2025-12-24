@@ -2,7 +2,7 @@ class ReviewModel {
   final String id;
   final String productId;
   final String userId;
-  final String? orderId; // <-- Kept nullable for your test data
+  final String? orderId;
   final double rating;
   final String comment;
   final bool isVerifiedPurchase;
@@ -14,11 +14,15 @@ class ReviewModel {
   final String? userName;
   final String? userImageUrl;
 
+  // Product info (from join) - NEW
+  final String? productName;
+  final String? productImageUrl;
+
   ReviewModel({
     required this.id,
     required this.productId,
     required this.userId,
-    this.orderId, // <-- Kept optional
+    this.orderId,
     required this.rating,
     required this.comment,
     this.isVerifiedPurchase = false,
@@ -27,6 +31,8 @@ class ReviewModel {
     this.updatedAt,
     this.userName,
     this.userImageUrl,
+    this.productName, // NEW
+    this.productImageUrl, // NEW
   });
 
   // From JSON (Supabase response)
@@ -35,19 +41,31 @@ class ReviewModel {
     String? userName;
     String? userImageUrl;
     
-    // --- THIS IS THE FIX ---
-    // Check for 'profiles' and the correct column 'profile_image_url'
     if (json['profiles'] is Map<String, dynamic>) {
       userName = json['profiles']['full_name'] as String?;
-      userImageUrl = json['profiles']['profile_image_url'] as String?; // <-- FIXED
+      userImageUrl = json['profiles']['profile_image_url'] as String?;
     } 
-    // Fallback in case 'users' is used elsewhere
     else if (json['users'] is Map<String, dynamic>) {
       userName = json['users']['full_name'] as String?;
-      userImageUrl = json['users']['profile_image_url'] as String?; // <-- FIXED
+      userImageUrl = json['users']['profile_image_url'] as String?;
     } else {
       userName = json['user_name'] as String?;
       userImageUrl = json['user_image_url'] as String?;
+    }
+
+    // Handle nested product data from join - NEW
+    String? productName;
+    String? productImageUrl;
+    
+    if (json['products'] is Map<String, dynamic>) {
+      productName = json['products']['name'] as String?;
+      final imageUrls = json['products']['image_urls'];
+      if (imageUrls is List && imageUrls.isNotEmpty) {
+        productImageUrl = imageUrls.first as String?;
+      }
+    } else {
+      productName = json['product_name'] as String?;
+      productImageUrl = json['product_image_url'] as String?;
     }
 
     // Parse rating - handle both string and numeric types
@@ -62,9 +80,7 @@ class ReviewModel {
       id: json['id'] as String,
       productId: json['product_id'] as String,
       userId: json['user_id'] as String,
-      
-      orderId: json['order_id'] as String?, // <-- Kept nullable
-      
+      orderId: json['order_id'] as String?,
       rating: ratingValue,
       comment: json['comment'] as String? ?? '',
       isVerifiedPurchase: json['is_verified_purchase'] as bool? ?? false,
@@ -75,6 +91,8 @@ class ReviewModel {
           : null,
       userName: userName,
       userImageUrl: userImageUrl,
+      productName: productName, // NEW
+      productImageUrl: productImageUrl, // NEW
     );
   }
 

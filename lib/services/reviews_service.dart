@@ -81,7 +81,7 @@ class ReviewService {
               full_name,
               profile_image_url
             )
-          ''') // <-- FIX 1: Changed 'avatar_url' to 'profile_image_url'
+          ''')
           .eq('product_id', productId)
           .order('created_at', ascending: false)
           .limit(limit);
@@ -92,6 +92,34 @@ class ReviewService {
     } catch (e) {
       print('Error getting product reviews: $e');
       return [];
+    }
+  }
+
+  // Get all reviews by a user - NEW METHOD
+  Future<List<ReviewModel>> getUserReviews(String userId) async {
+    try {
+      final response = await _supabase
+          .from('reviews')
+          .select('''
+            *,
+            profiles:user_id (
+              full_name,
+              profile_image_url
+            ),
+            products:product_id (
+              name,
+              image_urls
+            )
+          ''')
+          .eq('user_id', userId)
+          .order('created_at', ascending: false);
+
+      return (response as List)
+          .map((json) => ReviewModel.fromJson(json))
+          .toList();
+    } catch (e) {
+      print('Error fetching user reviews: $e');
+      rethrow;
     }
   }
 
@@ -106,7 +134,7 @@ class ReviewService {
               full_name,
               profile_image_url
             )
-          ''') // <-- FIX 2: Changed 'avatar_url' to 'profile_image_url'
+          ''')
           .eq('user_id', userId)
           .eq('order_id', orderId)
           .maybeSingle();

@@ -75,7 +75,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
       await _loadWishlist();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to remove: ${e.toString()}'), backgroundColor: Colors.red),
+          SnackBar(content: Text('Failed to remove: ${e.toString()}'), backgroundColor: AppColors.errorRed),
         );
       }
     }
@@ -87,18 +87,20 @@ class _WishlistScreenState extends State<WishlistScreen> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: AppColors.getCardBackground(context),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Clear Wishlist', style: AppTextStyles.heading.copyWith(fontSize: 18)),
-        content: Text('Are you sure you want to remove all items from your wishlist?', style: AppTextStyles.body),
+        title: Text('Clear Wishlist', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.getTextPrimary(context))),
+        content: Text('Are you sure you want to remove all items from your wishlist?', style: TextStyle(color: AppColors.getTextMuted(context))),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text('Cancel', style: TextStyle(color: AppColors.textLight)),
+            child: Text('Cancel', style: TextStyle(color: AppColors.getTextMuted(context))),
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
             style: ElevatedButton.styleFrom(
-              backgroundColor: Color(0xFFEF4444),
+              backgroundColor: AppColors.errorRed,
+              foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
             ),
             child: Text('Clear All'),
@@ -136,7 +138,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Failed to clear wishlist'),
-            backgroundColor: Colors.red,
+            backgroundColor: AppColors.errorRed,
           ),
         );
       }
@@ -170,7 +172,7 @@ class _WishlistScreenState extends State<WishlistScreen> {
       if (mounted) {
         setState(() => _addingToCartId = null);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to add: ${e.toString()}'), backgroundColor: Colors.red),
+          SnackBar(content: Text('Failed to add: ${e.toString()}'), backgroundColor: AppColors.errorRed),
         );
       }
     }
@@ -181,16 +183,21 @@ class _WishlistScreenState extends State<WishlistScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.getBackground(context),
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.getCardBackground(context),
         elevation: 0,
-        title: Text('My Wishlist', style: AppTextStyles.heading.copyWith(fontSize: 18)),
+        iconTheme: IconThemeData(color: AppColors.getTextPrimary(context)),
+        title: Text('My Wishlist', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.getTextPrimary(context))),
         centerTitle: false,
+        bottom: PreferredSize(
+          preferredSize: Size.fromHeight(1),
+          child: Divider(height: 1, color: AppColors.getBorder(context).withOpacity(0.3)),
+        ),
         actions: _wishlistProducts.isNotEmpty
             ? [
                 IconButton(
-                  icon: Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 22),
+                  icon: Icon(Icons.delete_outline, color: AppColors.errorRed, size: 22),
                   onPressed: _clearWishlist,
                 ),
               ]
@@ -251,7 +258,7 @@ class WishlistProductCard extends StatelessWidget {
 
   String _formatPrice(double price) => '₦${NumberFormat("#,##0", "en_US").format(price)}';
 
-  Widget _buildRatingStars({double? rating, double size = 10}) {
+  Widget _buildRatingStars(BuildContext context, {double? rating, double size = 10}) {
     final displayRating = rating ?? 0.0;
     final fullStars = displayRating.floor();
     final hasHalfStar = (displayRating - fullStars) >= 0.5;
@@ -259,12 +266,12 @@ class WishlistProductCard extends StatelessWidget {
     return Row(
       children: [
         ...List.generate(5, (i) {
-          if (i < fullStars) return Icon(Icons.star, size: size, color: Color(0xFFFF6B35));
-          if (i == fullStars && hasHalfStar) return Icon(Icons.star_half, size: size, color: Color(0xFFFF6B35));
-          return Icon(Icons.star_border, size: size, color: Colors.grey.shade300);
+          if (i < fullStars) return Icon(Icons.star, size: size, color: AppColors.primaryOrange);
+          if (i == fullStars && hasHalfStar) return Icon(Icons.star_half, size: size, color: AppColors.primaryOrange);
+          return Icon(Icons.star_border, size: size, color: AppColors.getBorder(context));
         }),
         const SizedBox(width: 3),
-        Text('${displayRating.toStringAsFixed(1)}', style: TextStyle(fontSize: size - 2, color: AppColors.textLight, fontWeight: FontWeight.w500)),
+        Text('${displayRating.toStringAsFixed(1)}', style: TextStyle(fontSize: size - 2, color: AppColors.getTextMuted(context), fontWeight: FontWeight.w500)),
       ],
     );
   }
@@ -273,13 +280,13 @@ class WishlistProductCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 6)],
+        color: AppColors.getCardBackground(context),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.getBorder(context).withOpacity(0.3), width: 0.5),
       ),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -287,49 +294,72 @@ class WishlistProductCard extends StatelessWidget {
               child: Stack(
                 children: [
                   ClipRRect(
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
                     child: CachedNetworkImage(
                       imageUrl: product.imageUrls.isNotEmpty ? product.imageUrls.first : 'https://placehold.co/600x400/eeeeee/cccccc?text=No+Image',
                       width: double.infinity,
                       height: double.infinity,
                       fit: BoxFit.cover,
-                      placeholder: (context, url) => Container(color: AppColors.background, child: Icon(Icons.image, color: AppColors.textLight.withOpacity(0.5))),
-                      errorWidget: (context, url, error) => Container(color: AppColors.background, child: Icon(Icons.shopping_bag_outlined, size: 50, color: Color(0xFFFF6B35).withOpacity(0.3))),
+                      placeholder: (context, url) => Container(
+                        color: AppColors.getBackground(context),
+                        child: Icon(Icons.image, color: AppColors.getTextMuted(context)),
+                      ),
+                      errorWidget: (context, url, error) => Container(
+                        color: AppColors.getBackground(context),
+                        child: Icon(Icons.shopping_bag_outlined, size: 50, color: AppColors.primaryOrange.withOpacity(0.3)),
+                      ),
                     ),
                   ),
                   if (product.hasDiscount || product.discountPercentage != null)
                     Positioned(
-                      top: 8,
-                      right: 8,
+                      top: 6,
+                      right: 6,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
-                        decoration: BoxDecoration(color: Color(0xFFFF6B35), borderRadius: BorderRadius.circular(8)),
-                        child: Text('-${product.discountPercentage ?? ((product.originalPrice! - product.price) / product.originalPrice! * 100).round()}%', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                        decoration: BoxDecoration(color: AppColors.primaryOrange, borderRadius: BorderRadius.circular(6)),
+                        child: Text('-${product.discountPercentage ?? ((product.originalPrice! - product.price) / product.originalPrice! * 100).round()}%', style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)),
                       ),
                     ),
                   Positioned(
-                    top: 8,
-                    left: 8,
+                    top: 6,
+                    left: 6,
                     child: GestureDetector(
                       onTap: onRemove,
                       child: Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(color: Colors.white.withOpacity(0.9), shape: BoxShape.circle),
-                        child: Icon(Icons.favorite, color: Colors.red, size: 16),
+                        padding: const EdgeInsets.all(5),
+                        decoration: BoxDecoration(
+                          color: AppColors.getCardBackground(context).withOpacity(0.9),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(Icons.favorite, color: Colors.red, size: 15),
                       ),
                     ),
                   ),
                   Positioned(
-                    bottom: 8,
-                    right: 8,
+                    bottom: 6,
+                    right: 6,
                     child: GestureDetector(
                       onTap: onAddToCart,
                       child: Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(color: isInCart ? Color(0xFFFF6B35) : Colors.white.withOpacity(0.9), shape: BoxShape.circle),
+                        padding: const EdgeInsets.all(5),
+                        decoration: BoxDecoration(
+                          color: isInCart ? AppColors.primaryOrange : AppColors.getCardBackground(context).withOpacity(0.9),
+                          shape: BoxShape.circle,
+                        ),
                         child: isAddingToCart
-                            ? Container(width: 16, height: 16, padding: const EdgeInsets.all(2.0), child: CircularProgressIndicator(color: isInCart ? Colors.white : Color(0xFFFF6B35), strokeWidth: 2))
-                            : Icon(isInCart ? Icons.check : Icons.add_shopping_cart, color: isInCart ? Colors.white : Color(0xFFFF6B35), size: 16),
+                            ? SizedBox(
+                                width: 15,
+                                height: 15,
+                                child: CircularProgressIndicator(
+                                  color: isInCart ? Colors.white : AppColors.primaryOrange,
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : Icon(
+                                isInCart ? Icons.check : Icons.add_shopping_cart,
+                                color: isInCart ? Colors.white : AppColors.primaryOrange,
+                                size: 15,
+                              ),
                       ),
                     ),
                   ),
@@ -341,27 +371,49 @@ class WishlistProductCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(product.name, style: AppTextStyles.body.copyWith(fontSize: 13, color: AppColors.textDark, fontWeight: FontWeight.bold), maxLines: 2, overflow: TextOverflow.ellipsis),
-                  const SizedBox(height: 3),
+                  Text(
+                    product.name,
+                    style: TextStyle(fontSize: 13, color: AppColors.getTextPrimary(context), fontWeight: FontWeight.w600),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
                   Row(
                     children: [
-                      Text(_formatPrice(product.price), style: AppTextStyles.price.copyWith(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFFFF6B35))),
+                      Text(
+                        _formatPrice(product.price),
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.primaryOrange),
+                      ),
                       if (product.hasDiscount && product.originalPrice != null) ...[
-                        const SizedBox(width: 3),
-                        Flexible(child: Text(_formatPrice(product.originalPrice!), style: TextStyle(fontSize: 10, color: AppColors.textLight, decoration: TextDecoration.lineThrough), overflow: TextOverflow.ellipsis, maxLines: 1)),
+                        const SizedBox(width: 4),
+                        Flexible(
+                          child: Text(
+                            _formatPrice(product.originalPrice!),
+                            style: TextStyle(fontSize: 10, color: AppColors.getTextMuted(context), decoration: TextDecoration.lineThrough),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
+                          ),
+                        ),
                       ],
                     ],
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 4),
                   Row(
                     children: [
-                      Icon(Icons.location_on, size: 10, color: AppColors.textLight),
+                      Icon(Icons.location_on, size: 10, color: AppColors.primaryOrange),
                       const SizedBox(width: 2),
-                      Expanded(child: Text(product.universityAbbr?.isNotEmpty == true ? product.universityAbbr! : product.universityName ?? 'UniHub', style: TextStyle(fontSize: 9, color: AppColors.textLight), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                      Expanded(
+                        child: Text(
+                          product.universityAbbr ?? product.universityName ?? 'N/A',
+                          style: TextStyle(fontSize: 9, color: AppColors.getTextMuted(context), fontWeight: FontWeight.w500),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
                     ],
                   ),
-                  const SizedBox(height: 2),
-                  _buildRatingStars(rating: product.averageRating, size: 10),
+                  const SizedBox(height: 3),
+                  _buildRatingStars(context, rating: product.averageRating, size: 10),
                 ],
               ),
             ),

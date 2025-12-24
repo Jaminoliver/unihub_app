@@ -1,12 +1,12 @@
+// cart_screen.dart
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../constants/app_colors.dart';
-import '../constants/app_text_styles.dart';
 import '../services/cart_service.dart';
 import '../services/auth_service.dart';
 import '../models/cart_model.dart';
 import '../models/product_model.dart';
-import '../screens/checkout_address_screen.dart'; // NAVIGATE TO ADDRESS FIRST
+import '../screens/checkout_address_screen.dart';
 import '../screens/product_details_screen.dart';
 import '../widgets/unihub_loading_widget.dart';
 
@@ -51,9 +51,7 @@ class CartScreenState extends State<CartScreen> {
   void _onClearCartRequested() {
     if (widget.clearCartNotifier?.value == true) {
       clearCart().then((_) {
-        if (mounted) {
-          widget.clearCartNotifier?.value = false;
-        }
+        if (mounted) widget.clearCartNotifier?.value = false;
       });
     }
   }
@@ -311,15 +309,16 @@ class CartScreenState extends State<CartScreen> {
     return showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: AppColors.getCardBackground(context),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('Confirm', style: AppTextStyles.heading.copyWith(fontSize: 18)),
-        content: Text(message, style: AppTextStyles.body),
+        title: Text('Confirm', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context))),
+        content: Text(message, style: TextStyle(color: AppColors.getTextMuted(context))),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: Text('Cancel', style: TextStyle(color: AppColors.textLight))),
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text('Cancel', style: TextStyle(color: AppColors.getTextMuted(context)))),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Color(0xFFFF6B35), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
-            child: Text(confirmText),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primaryOrange, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+            child: Text(confirmText, style: TextStyle(color: Colors.white)),
           ),
         ],
       ),
@@ -330,9 +329,10 @@ class CartScreenState extends State<CartScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: isError ? Color(0xFFEF4444) : Color(0xFF10B981),
+        backgroundColor: isError ? AppColors.errorRed : AppColors.successGreen,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        margin: EdgeInsets.all(16),
       ),
     );
   }
@@ -340,28 +340,20 @@ class CartScreenState extends State<CartScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.getBackground(context),
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: AppColors.getCardBackground(context),
         elevation: 0,
         automaticallyImplyLeading: false,
         title: ShaderMask(
           shaderCallback: (bounds) => kOrangeGradient.createShader(bounds),
-          child: const Text(
-            'Cart',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              letterSpacing: -0.3,
-            ),
-          ),
+          child: const Text('Cart', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: -0.3)),
         ),
         centerTitle: false,
         actions: _cartItems.isNotEmpty
             ? [
                 IconButton(
-                  icon: Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 22),
+                  icon: Icon(Icons.delete_outline, color: AppColors.errorRed, size: 22),
                   onPressed: clearCart,
                 ),
               ]
@@ -369,16 +361,14 @@ class CartScreenState extends State<CartScreen> {
       ),
       body: RefreshIndicator(
         onRefresh: loadCartItems,
-        color: Color(0xFFFF6B35),
+        color: AppColors.primaryOrange,
         child: _isLoading ? _buildLoader() : _cartItems.isEmpty ? _buildEmptyCart() : _buildCartList(),
       ),
       bottomNavigationBar: _cartItems.isNotEmpty ? _buildCheckoutBar() : null,
     );
   }
 
-  Widget _buildLoader() {
-    return Center(child: UniHubLoader(size: 80));
-  }
+  Widget _buildLoader() => Center(child: UniHubLoader(size: 80));
 
   Widget _buildEmptyCart() {
     return SingleChildScrollView(
@@ -389,23 +379,25 @@ class CartScreenState extends State<CartScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(Icons.shopping_cart_outlined, size: 80, color: AppColors.textLight.withOpacity(0.5)),
+              Container(
+                padding: EdgeInsets.all(20),
+                decoration: BoxDecoration(color: AppColors.primaryOrange.withOpacity(0.1), shape: BoxShape.circle),
+                child: Icon(Icons.shopping_cart_outlined, size: 48, color: AppColors.primaryOrange),
+              ),
+              SizedBox(height: 16),
+              Text('Your cart is empty', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context))),
+              SizedBox(height: 6),
+              Text('Add products to get started', style: TextStyle(fontSize: 14, color: AppColors.getTextMuted(context))),
               SizedBox(height: 20),
-              Text('Your cart is empty', style: AppTextStyles.heading.copyWith(fontSize: 20)),
-              SizedBox(height: 8),
-              Text('Add products to get started', style: AppTextStyles.body.copyWith(color: AppColors.textLight)),
-              SizedBox(height: 24),
               ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).popUntil((route) => route.settings.name == '/home' || route.isFirst);
-                },
-                icon: Icon(Icons.shopping_bag_outlined, color: Colors.white),
-                label: Text('Start Shopping', style: TextStyle(color: Colors.white)),
+                onPressed: () => Navigator.of(context).popUntil((route) => route.settings.name == '/home' || route.isFirst),
+                icon: Icon(Icons.shopping_bag_outlined, size: 18),
+                label: Text('Start Shopping'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Color(0xFFFF6B35),
+                  backgroundColor: AppColors.primaryOrange,
                   foregroundColor: Colors.white,
-                  padding: EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                 ),
               ),
             ],
@@ -418,17 +410,14 @@ class CartScreenState extends State<CartScreen> {
   Widget _buildCartList() {
     return AnimatedList(
       key: _listKey,
-      padding: EdgeInsets.fromLTRB(16, 16, 16, 140),
+      padding: EdgeInsets.fromLTRB(16, 12, 16, 140),
       initialItemCount: _cartItems.length,
       itemBuilder: (context, index, animation) => _buildCartItemAnimated(_cartItems[index], index, animation),
     );
   }
 
   Widget _buildCartItemAnimated(CartModel item, int index, Animation<double> animation) {
-    return SlideTransition(
-      position: animation.drive(Tween(begin: Offset(0, -0.3), end: Offset.zero).chain(CurveTween(curve: Curves.easeOut))),
-      child: FadeTransition(opacity: animation, child: _buildCartItem(item)),
-    );
+    return FadeTransition(opacity: animation, child: _buildCartItem(item));
   }
 
   Widget _buildCartItem(CartModel item) {
@@ -439,66 +428,66 @@ class CartScreenState extends State<CartScreen> {
     final currentPayment = _selectedPaymentMethods[item.id];
     final isUpdating = _updatingItemId == item.id;
 
-    return AnimatedContainer(
-      duration: Duration(milliseconds: 200),
-      margin: EdgeInsets.only(bottom: 12),
+    return Container(
+      margin: EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: isSelected ? Color(0xFFFF6B35).withOpacity(0.5) : Colors.grey.shade200, width: isSelected ? 2 : 1),
-        boxShadow: [BoxShadow(color: isSelected ? Color(0xFFFF6B35).withOpacity(0.1) : Colors.black.withOpacity(0.03), blurRadius: isSelected ? 12 : 6, offset: Offset(0, isSelected ? 4 : 2))],
+        color: AppColors.getCardBackground(context),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: isSelected ? AppColors.primaryOrange.withOpacity(0.5) : AppColors.getBorder(context).withOpacity(0.3),
+          width: isSelected ? 1.5 : 0.5,
+        ),
       ),
       child: Column(
         children: [
           Padding(
-            padding: EdgeInsets.all(12),
+            padding: EdgeInsets.all(10),
             child: Row(
               children: [
                 GestureDetector(
                   onTap: () => _toggleSelection(item),
-                  child: AnimatedContainer(
-                    duration: Duration(milliseconds: 200),
+                  child: Container(
                     width: 20,
                     height: 20,
                     decoration: BoxDecoration(
-                      color: isSelected ? Color(0xFFFF6B35) : Colors.white,
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(color: isSelected ? Color(0xFFFF6B35) : Colors.grey.shade300, width: 2),
+                      color: isSelected ? AppColors.primaryOrange : AppColors.getCardBackground(context),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(color: isSelected ? AppColors.primaryOrange : AppColors.getBorder(context), width: 2),
                     ),
-                    child: isSelected ? Icon(Icons.check, size: 14, color: Colors.white) : null,
+                    child: isSelected ? Icon(Icons.check, size: 12, color: Colors.white) : null,
                   ),
                 ),
-                SizedBox(width: 12),
+                SizedBox(width: 10),
                 GestureDetector(
                   onTap: () => Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (context) => ProductDetailsScreen(productId: product.id))),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(8),
                     child: Container(
-                      width: 70,
-                      height: 70,
-                      color: AppColors.background,
+                      width: 60,
+                      height: 60,
+                      color: AppColors.getBackground(context),
                       child: product.mainImageUrl != null
-                          ? Image.network(product.mainImageUrl!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Icon(Icons.image, color: AppColors.textLight))
-                          : Icon(Icons.image, color: AppColors.textLight),
+                          ? Image.network(product.mainImageUrl!, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Icon(Icons.image, color: AppColors.getTextMuted(context), size: 28))
+                          : Icon(Icons.image, color: AppColors.getTextMuted(context), size: 28),
                     ),
                   ),
                 ),
-                SizedBox(width: 12),
+                SizedBox(width: 10),
                 Expanded(
                   child: GestureDetector(
                     onTap: () => Navigator.of(context, rootNavigator: true).push(MaterialPageRoute(builder: (context) => ProductDetailsScreen(productId: product.id))),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(product.name, style: AppTextStyles.body.copyWith(fontSize: 14, fontWeight: FontWeight.bold, color: Colors.black), maxLines: 2, overflow: TextOverflow.ellipsis),
+                        Text(product.name, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context)), maxLines: 2, overflow: TextOverflow.ellipsis),
                         SizedBox(height: 4),
                         Container(
                           padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(color: Color(0xFFFF6B35).withOpacity(0.1), borderRadius: BorderRadius.circular(4)),
-                          child: Text(product.condition.toUpperCase(), style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Color(0xFFFF6B35))),
+                          decoration: BoxDecoration(color: AppColors.primaryOrange.withOpacity(0.15), borderRadius: BorderRadius.circular(4)),
+                          child: Text(product.condition.toUpperCase(), style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: AppColors.primaryOrange)),
                         ),
-                        SizedBox(height: 6),
-                        Text(_formatPrice(item.totalPrice), style: AppTextStyles.price.copyWith(fontSize: 16, color: Color(0xFFFF6B35))),
+                        SizedBox(height: 4),
+                        Text(_formatPrice(item.totalPrice), style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: AppColors.primaryOrange)),
                       ],
                     ),
                   ),
@@ -506,29 +495,33 @@ class CartScreenState extends State<CartScreen> {
                 Column(
                   children: [
                     Container(
-                      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(8)),
+                      decoration: BoxDecoration(
+                        color: AppColors.getBackground(context),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: AppColors.getBorder(context).withOpacity(0.3)),
+                      ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           _buildQtyButton(Icons.remove, item.quantity > 1 && !isUpdating ? () => _updateQuantity(item, item.quantity - 1) : null),
                           Container(
-                            width: 32,
+                            width: 30,
                             alignment: Alignment.center,
                             child: isUpdating
-                                ? SizedBox(width: 14, height: 14, child: UniHubLoader(size: 14, backgroundColor: Colors.transparent))
-                                : Text('${item.quantity}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                                ? SizedBox(width: 12, height: 12, child: UniHubLoader(size: 12))
+                                : Text('${item.quantity}', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: AppColors.getTextPrimary(context))),
                           ),
                           _buildQtyButton(Icons.add, item.quantity < product.stockQuantity && !isUpdating ? () => _updateQuantity(item, item.quantity + 1) : null),
                         ],
                       ),
                     ),
-                    SizedBox(height: 8),
+                    SizedBox(height: 6),
                     GestureDetector(
                       onTap: () => _removeItem(item),
                       child: Container(
                         padding: EdgeInsets.all(6),
-                        decoration: BoxDecoration(color: Color(0xFFEF4444).withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
-                        child: Icon(Icons.delete_outline, size: 18, color: Color(0xFFEF4444)),
+                        decoration: BoxDecoration(color: AppColors.errorRed.withOpacity(0.1), borderRadius: BorderRadius.circular(6)),
+                        child: Icon(Icons.delete_outline, size: 16, color: AppColors.errorRed),
                       ),
                     ),
                   ],
@@ -546,7 +539,12 @@ class CartScreenState extends State<CartScreen> {
     return GestureDetector(
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
-      child: Container(width: 28, height: 28, alignment: Alignment.center, child: Icon(icon, size: 16, color: onTap != null ? Color(0xFFFF6B35) : Colors.grey.shade400)),
+      child: Container(
+        width: 28,
+        height: 28,
+        alignment: Alignment.center,
+        child: Icon(icon, size: 16, color: onTap != null ? AppColors.primaryOrange : AppColors.getTextMuted(context)),
+      ),
     );
   }
 
@@ -554,43 +552,45 @@ class CartScreenState extends State<CartScreen> {
     final validOptions = _getValidPaymentOptions(product.price);
     final currentSelection = _selectedPaymentMethods[item.id];
 
-    return AnimatedContainer(
-      duration: Duration(milliseconds: 300),
-      padding: EdgeInsets.fromLTRB(12, 8, 12, 12),
-      decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.vertical(bottom: Radius.circular(12))),
+    return Container(
+      padding: EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: AppColors.getBackground(context),
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(10)),
+        border: Border(top: BorderSide(color: AppColors.getBorder(context).withOpacity(0.3), width: 0.5)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.payment, size: 14, color: Color(0xFFFF6B35)),
+              Icon(Icons.payment, size: 14, color: AppColors.primaryOrange),
               SizedBox(width: 6),
-              Text('Payment Method', style: AppTextStyles.body.copyWith(fontSize: 12, fontWeight: FontWeight.w600)),
+              Text('Payment Method', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context))),
             ],
           ),
-          SizedBox(height: 10),
+          SizedBox(height: 8),
           Wrap(
-            spacing: 8,
-            runSpacing: 8,
+            spacing: 6,
+            runSpacing: 6,
             children: validOptions.map((option) {
               final isSelected = currentSelection == option;
               return InkWell(
                 onTap: () => setState(() => _selectedPaymentMethods[item.id] = option),
-                borderRadius: BorderRadius.circular(10),
-                child: AnimatedContainer(
-                  duration: Duration(milliseconds: 200),
-                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                borderRadius: BorderRadius.circular(8),
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: isSelected ? Color(0xFFFF6B35) : Colors.white,
-                    borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: isSelected ? Color(0xFFFF6B35) : Colors.grey.shade300),
+                    color: isSelected ? AppColors.primaryOrange : AppColors.getCardBackground(context),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: isSelected ? AppColors.primaryOrange : AppColors.getBorder(context).withOpacity(0.3)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(_getPaymentIcon(option), size: 14, color: isSelected ? Colors.white : Color(0xFFFF6B35)),
-                      SizedBox(width: 6),
-                      Text(_getPaymentLabel(option), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: isSelected ? Colors.white : AppColors.textDark)),
+                      Icon(_getPaymentIcon(option), size: 13, color: isSelected ? Colors.white : AppColors.primaryOrange),
+                      SizedBox(width: 5),
+                      Text(_getPaymentLabel(option), style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: isSelected ? Colors.white : AppColors.getTextPrimary(context))),
                     ],
                   ),
                 ),
@@ -598,15 +598,19 @@ class CartScreenState extends State<CartScreen> {
             }).toList(),
           ),
           if (currentSelection != null) ...[
-            SizedBox(height: 8),
+            SizedBox(height: 6),
             Container(
-              padding: EdgeInsets.all(8),
-              decoration: BoxDecoration(color: Color(0xFF10B981).withOpacity(0.1), borderRadius: BorderRadius.circular(8), border: Border.all(color: Color(0xFF10B981).withOpacity(0.3))),
+              padding: EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: AppColors.successGreen.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: AppColors.successGreen.withOpacity(0.3)),
+              ),
               child: Row(
                 children: [
-                  Icon(Icons.check_circle, size: 14, color: Color(0xFF10B981)),
-                  SizedBox(width: 6),
-                  Expanded(child: Text(_getPaymentDescription(currentSelection, item.totalPrice), style: TextStyle(fontSize: 11, color: Color(0xFF059669), fontWeight: FontWeight.w600))),
+                  Icon(Icons.check_circle, size: 12, color: AppColors.successGreen),
+                  SizedBox(width: 5),
+                  Expanded(child: Text(_getPaymentDescription(currentSelection, item.totalPrice), style: TextStyle(fontSize: 10, color: AppColors.successGreen, fontWeight: FontWeight.w600))),
                 ],
               ),
             ),
@@ -618,8 +622,11 @@ class CartScreenState extends State<CartScreen> {
 
   Widget _buildCheckoutBar() {
     return Container(
-      decoration: BoxDecoration(color: Colors.white, boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: Offset(0, -2))]),
-      padding: EdgeInsets.fromLTRB(16, 16, 16, 16 + MediaQuery.of(context).padding.bottom),
+      decoration: BoxDecoration(
+        color: AppColors.getCardBackground(context),
+        border: Border(top: BorderSide(color: AppColors.getBorder(context).withOpacity(0.3), width: 0.5)),
+      ),
+      padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.of(context).padding.bottom),
       child: SafeArea(
         top: false,
         child: Column(
@@ -627,27 +634,31 @@ class CartScreenState extends State<CartScreen> {
           children: [
             if (_canCheckout)
               Container(
-                padding: EdgeInsets.all(12),
-                margin: EdgeInsets.only(bottom: 12),
-                decoration: BoxDecoration(color: AppColors.background, borderRadius: BorderRadius.circular(12)),
+                padding: EdgeInsets.all(10),
+                margin: EdgeInsets.only(bottom: 10),
+                decoration: BoxDecoration(
+                  color: AppColors.getBackground(context),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: AppColors.getBorder(context).withOpacity(0.3), width: 0.5),
+                ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Total', style: TextStyle(fontSize: 12, color: AppColors.textLight)),
-                        Text(_formatPrice(_selectedTotal), style: AppTextStyles.price.copyWith(fontSize: 20, color: Color(0xFFFF6B35))),
+                        Text('Total', style: TextStyle(fontSize: 11, color: AppColors.getTextMuted(context))),
+                        Text(_formatPrice(_selectedTotal), style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.primaryOrange)),
                       ],
                     ),
                     Container(
-                      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                      decoration: BoxDecoration(color: Color(0xFFFCD34D).withOpacity(0.2), borderRadius: BorderRadius.circular(8)),
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(color: Color(0xFFFCD34D).withOpacity(0.2), borderRadius: BorderRadius.circular(6)),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          Text('Escrow', style: TextStyle(fontSize: 10, color: Color(0xFF92400E), fontWeight: FontWeight.bold)),
-                          Text(_formatPrice(_escrowAmount), style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF92400E))),
+                          Text('Escrow', style: TextStyle(fontSize: 9, color: Color(0xFF92400E), fontWeight: FontWeight.bold)),
+                          Text(_formatPrice(_escrowAmount), style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF92400E))),
                         ],
                       ),
                     ),
@@ -656,25 +667,27 @@ class CartScreenState extends State<CartScreen> {
               ),
             SizedBox(
               width: double.infinity,
-              height: 52,
+              height: 48,
               child: ElevatedButton(
                 onPressed: _canCheckout && !_isProcessing
                     ? () {
                         final selectedItems = _cartItems.where((i) => _selectedItemIds.contains(i.id)).toList();
                         final payments = Map<String, String>.from(_selectedPaymentMethods)..removeWhere((k, _) => !_selectedItemIds.contains(k));
-                        // NAVIGATE TO ADDRESS FIRST
                         Navigator.push(context, MaterialPageRoute(builder: (context) => CheckoutAddressScreen(selectedItems: selectedItems, paymentMethods: payments)));
                       }
                     : null,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Color(0xFFFF6B35),
-                  disabledBackgroundColor: Colors.grey.shade300,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  backgroundColor: AppColors.primaryOrange,
+                  disabledBackgroundColor: AppColors.getBorder(context),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   elevation: 0,
                 ),
                 child: _isProcessing
-                    ? SizedBox(height: 24, width: 24, child: FittedBox(child: UniHubLoader(size: 24, backgroundColor: Colors.transparent)))
-                    : Text(_canCheckout ? 'Checkout (${_selectedItemIds.length})' : 'Select items & payment', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white)),
+                    ? SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                    : Text(
+                        _canCheckout ? 'Checkout (${_selectedItemIds.length})' : 'Select items & payment',
+                        style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white),
+                      ),
               ),
             ),
           ],

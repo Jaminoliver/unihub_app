@@ -79,7 +79,6 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     return grouped;
   }
 
-  // ✅ NEW: Color theme system - no badges except Escrow
   Map<String, dynamic> _getColorTheme(NotificationType type) {
     final themes = {
       NotificationType.orderPlaced: {
@@ -107,12 +106,11 @@ class _NotificationsScreenState extends State<NotificationsScreen>
         'bg': Color(0xFFFEF2F2),
         'icon': Icons.cancel,
       },
-      // ✅ Escrow - special with badge
       NotificationType.paymentEscrow: {
         'accent': Color(0xFF3B82F6),
         'bg': Color(0xFFEFF6FF),
         'icon': Icons.shield,
-        'badge': 'Escrow', // ✅ Only type with badge
+        'badge': 'Escrow',
       },
       NotificationType.escrowReleased: {
         'accent': Color(0xFF3B82F6),
@@ -124,7 +122,6 @@ class _NotificationsScreenState extends State<NotificationsScreen>
         'bg': Color(0xFFECFDF5),
         'icon': Icons.account_balance_wallet,
       },
-      // ✅ Admin messages - clean grey
       'admin': {
         'accent': Color(0xFF6B7280),
         'bg': Color(0xFFF9FAFB),
@@ -150,7 +147,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: AppColors.getBackground(context),
       appBar: _buildAppBar(),
       body: StreamBuilder<List<NotificationModel>>(
         stream: _notificationService.notificationsStream,
@@ -180,15 +177,16 @@ class _NotificationsScreenState extends State<NotificationsScreen>
 
   PreferredSizeWidget _buildAppBar() {
     return AppBar(
-      backgroundColor: Colors.white,
+      backgroundColor: AppColors.getCardBackground(context),
       elevation: 0,
       automaticallyImplyLeading: false,
+      iconTheme: IconThemeData(color: AppColors.getTextPrimary(context)),
       title: Text(
         'Notifications',
-        style: AppTextStyles.heading.copyWith(
+        style: TextStyle(
           fontSize: 20,
           fontWeight: FontWeight.bold,
-          color: Color(0xFFFF6B35),
+          color: AppColors.primaryOrange,
         ),
       ),
       centerTitle: false,
@@ -214,7 +212,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                           Text('All marked as read'),
                         ],
                       ),
-                      backgroundColor: Color(0xFF4CAF50),
+                      backgroundColor: AppColors.successGreen,
                       behavior: SnackBarBehavior.floating,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -242,7 +240,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
         child: Container(
           decoration: BoxDecoration(
             border: Border(
-              bottom: BorderSide(color: AppColors.lightGrey, width: 1),
+              bottom: BorderSide(color: AppColors.getBorder(context).withOpacity(0.3), width: 1),
             ),
           ),
           child: StreamBuilder<List<NotificationModel>>(
@@ -255,7 +253,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
               return TabBar(
                 controller: _tabController,
                 labelColor: AppColors.primaryOrange,
-                unselectedLabelColor: AppColors.textLight,
+                unselectedLabelColor: AppColors.getTextMuted(context),
                 indicatorColor: AppColors.primaryOrange,
                 indicatorWeight: 3,
                 labelStyle: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
@@ -292,7 +290,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                         colors: [AppColors.primaryOrange, Color(0xFFFF8C42)],
                       )
                     : null,
-                color: !isActive ? AppColors.textLight : null,
+                color: !isActive ? AppColors.getTextMuted(context) : null,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
@@ -332,7 +330,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.bold,
-                  color: AppColors.textLight,
+                  color: AppColors.getTextMuted(context),
                   letterSpacing: 0.5,
                 ),
               ),
@@ -362,13 +360,12 @@ class _NotificationsScreenState extends State<NotificationsScreen>
     );
   }
 
-  // ✅ REDESIGNED: Color themes + Prominent unread + No badges (except Escrow)
   Widget _buildNotificationCard(NotificationModel notif) {
     final theme = _getColorTheme(notif.type);
     final accentColor = theme['accent'] as Color;
     final bgColor = theme['bg'] as Color;
     final icon = theme['icon'] as IconData;
-    final badge = theme['badge'] as String?; // Only Escrow has this
+    final badge = theme['badge'] as String?;
 
     final isUnread = !notif.isRead;
 
@@ -377,15 +374,17 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       child: Container(
         margin: EdgeInsets.only(bottom: 14),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: AppColors.getCardBackground(context),
           borderRadius: BorderRadius.circular(16),
-          // ✅ PROMINENT UNREAD: Thicker border + colored background hint
           border: isUnread
               ? Border.all(
                   color: AppColors.primaryOrange.withOpacity(0.4),
                   width: 2,
                 )
-              : null,
+              : Border.all(
+                  color: AppColors.getBorder(context).withOpacity(0.3),
+                  width: 0.5,
+                ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(isUnread ? 0.08 : 0.06),
@@ -396,13 +395,12 @@ class _NotificationsScreenState extends State<NotificationsScreen>
         ),
         child: Stack(
           children: [
-            // ✅ LEFT ACCENT BAR - Thicker for unread
             Positioned(
               left: 0,
               top: 0,
               bottom: 0,
               child: Container(
-                width: isUnread ? 6 : 4, // ✅ Thicker when unread
+                width: isUnread ? 6 : 4,
                 decoration: BoxDecoration(
                   color: accentColor,
                   borderRadius: BorderRadius.only(
@@ -413,7 +411,6 @@ class _NotificationsScreenState extends State<NotificationsScreen>
               ),
             ),
 
-            // ✅ COLORED BACKGROUND (subtle theme)
             Positioned.fill(
               child: Container(
                 decoration: BoxDecoration(
@@ -430,7 +427,6 @@ class _NotificationsScreenState extends State<NotificationsScreen>
               ),
             ),
 
-            // ✅ CONTENT
             Padding(
               padding: EdgeInsets.only(left: isUnread ? 6 : 4),
               child: Padding(
@@ -438,11 +434,9 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Top Row: Icon + Title + Optional Badge (Escrow only)
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Icon with colored background
                         Container(
                           padding: EdgeInsets.all(10),
                           decoration: BoxDecoration(
@@ -454,11 +448,9 @@ class _NotificationsScreenState extends State<NotificationsScreen>
 
                         SizedBox(width: 12),
 
-                        // Title + Unread Dot
                         Expanded(
                           child: Row(
                             children: [
-                              // ✅ PROMINENT UNREAD DOT
                               if (isUnread)
                                 Container(
                                   width: 10,
@@ -487,7 +479,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                                   style: TextStyle(
                                     fontSize: 15,
                                     fontWeight: isUnread ? FontWeight.bold : FontWeight.w600,
-                                    color: AppColors.textDark,
+                                    color: AppColors.getTextPrimary(context),
                                   ),
                                   maxLines: 2,
                                   overflow: TextOverflow.ellipsis,
@@ -497,7 +489,6 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                           ),
                         ),
 
-                        // ✅ BADGE - Only for Escrow
                         if (badge != null) ...[
                           SizedBox(width: 8),
                           Container(
@@ -539,19 +530,17 @@ class _NotificationsScreenState extends State<NotificationsScreen>
 
                     SizedBox(height: 12),
 
-                    // Message
                     Text(
                       notif.message,
                       style: TextStyle(
                         fontSize: 13,
-                        color: AppColors.textDark,
+                        color: AppColors.getTextPrimary(context),
                         height: 1.5,
                       ),
                       maxLines: 3,
                       overflow: TextOverflow.ellipsis,
                     ),
 
-                    // ✅ IMAGE (if present - admin notifications)
                     if (notif.imageUrl != null && notif.imageUrl!.isNotEmpty) ...[
                       SizedBox(height: 12),
                       ClipRRect(
@@ -563,7 +552,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                           fit: BoxFit.cover,
                           placeholder: (context, url) => Container(
                             height: 150,
-                            color: AppColors.lightGrey.withOpacity(0.3),
+                            color: AppColors.getBorder(context).withOpacity(0.3),
                             child: Center(
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
@@ -578,7 +567,6 @@ class _NotificationsScreenState extends State<NotificationsScreen>
 
                     SizedBox(height: 12),
 
-                    // Divider
                     Container(
                       height: 1,
                       color: accentColor.withOpacity(0.15),
@@ -586,7 +574,6 @@ class _NotificationsScreenState extends State<NotificationsScreen>
 
                     SizedBox(height: 10),
 
-                    // Bottom Row: Order Number + Timestamp
                     Row(
                       children: [
                         if (notif.orderNumber != null) ...[
@@ -618,19 +605,18 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                           ),
                           Spacer(),
                         ],
-                        Icon(Icons.access_time, size: 12, color: AppColors.textLight),
+                        Icon(Icons.access_time, size: 12, color: AppColors.getTextMuted(context)),
                         SizedBox(width: 4),
                         Text(
                           _formatTimestamp(notif.timestamp),
                           style: TextStyle(
                             fontSize: 11,
-                            color: AppColors.textLight,
+                            color: AppColors.getTextMuted(context),
                           ),
                         ),
                       ],
                     ),
 
-                    // Amount (if present)
                     if (notif.amount != null && notif.amount! > 0) ...[
                       SizedBox(height: 12),
                       Container(
@@ -654,7 +640,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                               'Amount',
                               style: TextStyle(
                                 fontSize: 12,
-                                color: AppColors.textLight,
+                                color: AppColors.getTextMuted(context),
                               ),
                             ),
                             Text(
@@ -691,7 +677,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
               Container(
                 padding: EdgeInsets.all(24),
                 decoration: BoxDecoration(
-                  color: AppColors.lightGrey.withOpacity(0.3),
+                  color: AppColors.getBorder(context).withOpacity(0.3),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(
@@ -699,7 +685,7 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                       ? Icons.notifications_off_outlined
                       : Icons.mark_email_read_outlined,
                   size: 64,
-                  color: AppColors.textLight,
+                  color: AppColors.getTextMuted(context),
                 ),
               ),
               SizedBox(height: 20),
@@ -707,14 +693,14 @@ class _NotificationsScreenState extends State<NotificationsScreen>
                 _tabController.index == 0
                     ? 'No Notifications'
                     : 'All Caught Up!',
-                style: AppTextStyles.heading.copyWith(fontSize: 18),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.getTextPrimary(context)),
               ),
               SizedBox(height: 8),
               Text(
                 _tabController.index == 0
                     ? 'Your notifications will appear here'
                     : 'You\'ve read all notifications',
-                style: AppTextStyles.body.copyWith(fontSize: 14),
+                style: TextStyle(fontSize: 14, color: AppColors.getTextMuted(context)),
                 textAlign: TextAlign.center,
               ),
             ],
@@ -794,7 +780,6 @@ class _NotificationsScreenState extends State<NotificationsScreen>
       case NotificationType.paymentReleased:
       case NotificationType.escrowReleased:
       case NotificationType.walletCredited:
-        // Navigate to wallet
         break;
       default:
         break;

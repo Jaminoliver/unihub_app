@@ -103,24 +103,28 @@ class _CheckoutReviewScreenState extends State<CheckoutReviewScreen> {
         return false;
       },
       child: Scaffold(
-        backgroundColor: AppColors.background,
+        backgroundColor: AppColors.getBackground(context),
         appBar: AppBar(
-          backgroundColor: Colors.white,
+          backgroundColor: AppColors.getCardBackground(context),
           elevation: 0,
+          iconTheme: IconThemeData(color: AppColors.getTextPrimary(context)),
           leading: IconButton(
-            icon: Icon(Icons.arrow_back, color: Colors.black),
+            icon: Icon(Icons.arrow_back),
             onPressed: () {
               Navigator.popUntil(context, (route) => route.settings.name == '/cart' || route.isFirst);
             },
           ),
-          title: Text('Review Order', style: AppTextStyles.heading.copyWith(fontSize: 18)),
+          title: Text('Review Order', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.getTextPrimary(context))),
           centerTitle: true,
+          bottom: PreferredSize(
+            preferredSize: Size.fromHeight(1),
+            child: Divider(height: 1, color: AppColors.getBorder(context).withOpacity(0.3)),
+          ),
         ),
         body: Column(
           children: [
-            // Simple Progress Line
             Container(
-              color: Colors.white,
+              color: AppColors.getCardBackground(context),
               padding: EdgeInsets.symmetric(vertical: 12, horizontal: 16),
               child: Row(
                 children: [
@@ -134,7 +138,7 @@ class _CheckoutReviewScreenState extends State<CheckoutReviewScreen> {
                 ],
               ),
             ),
-            Divider(height: 1),
+            Divider(height: 1, color: AppColors.getBorder(context).withOpacity(0.3)),
 
             Expanded(
               child: SingleChildScrollView(
@@ -143,15 +147,10 @@ class _CheckoutReviewScreenState extends State<CheckoutReviewScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Address
                     _buildAddressCard(),
                     SizedBox(height: 12),
-
-                    // Items
                     _buildOrderItemsCard(),
                     SizedBox(height: 12),
-
-                    // Summary
                     _buildSummaryCard(total, escrow, requiresPayment),
                     
                     if (requiresPayment) ...[
@@ -201,7 +200,7 @@ class _CheckoutReviewScreenState extends State<CheckoutReviewScreen> {
           Container(
             height: 3,
             decoration: BoxDecoration(
-              color: active ? Color(0xFFFF6B35).withOpacity(0.05) : Colors.grey[300],
+              color: active ? AppColors.primaryOrange : AppColors.getBorder(context).withOpacity(0.3),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
@@ -210,7 +209,7 @@ class _CheckoutReviewScreenState extends State<CheckoutReviewScreen> {
             label,
             style: TextStyle(
               fontSize: 11,
-              color: active ? Color(0xFFFF6B35) : Colors.grey[500],
+              color: active ? AppColors.primaryOrange : AppColors.getTextMuted(context),
               fontWeight: active ? FontWeight.w600 : FontWeight.normal,
             ),
           ),
@@ -224,16 +223,16 @@ class _CheckoutReviewScreenState extends State<CheckoutReviewScreen> {
       width: 8,
       height: 3,
       margin: EdgeInsets.only(bottom: 18),
-      color: active ? Color(0xFFFF6B35) : Colors.grey[300],
+      color: active ? AppColors.primaryOrange : AppColors.getBorder(context).withOpacity(0.3),
     );
   }
 
   Widget _buildAddressCard() {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.getCardBackground(context),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: AppColors.getBorder(context).withOpacity(0.3), width: 0.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -242,25 +241,25 @@ class _CheckoutReviewScreenState extends State<CheckoutReviewScreen> {
             padding: EdgeInsets.all(14),
             child: Row(
               children: [
-                Icon(Icons.location_on, color: Color(0xFFFF6B35), size: 18),
+                Icon(Icons.location_on, color: AppColors.primaryOrange, size: 18),
                 SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Delivery Address',
-                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context)),
                   ),
                 ),
                 TextButton(
                   onPressed: _changeAddress,
                   child: Text(
                     'Change',
-                    style: TextStyle(color: Color(0xFFFF6B35), fontSize: 13),
+                    style: TextStyle(color: AppColors.primaryOrange, fontSize: 13),
                   ),
                 ),
               ],
             ),
           ),
-          Divider(height: 1),
+          Divider(height: 1, color: AppColors.getBorder(context).withOpacity(0.3)),
           Padding(
             padding: EdgeInsets.all(14),
             child: Column(
@@ -268,25 +267,25 @@ class _CheckoutReviewScreenState extends State<CheckoutReviewScreen> {
               children: [
                 Text(
                   widget.deliveryAddress.addressLine,
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppColors.getTextPrimary(context)),
                 ),
                 SizedBox(height: 6),
                 Text(
                   '${widget.deliveryAddress.city}, ${widget.deliveryAddress.state}',
-                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                  style: TextStyle(fontSize: 12, color: AppColors.getTextMuted(context)),
                 ),
                 if (widget.deliveryAddress.landmark?.isNotEmpty ?? false) ...[
                   SizedBox(height: 4),
                   Text(
                     'Near ${widget.deliveryAddress.landmark}',
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    style: TextStyle(fontSize: 12, color: AppColors.getTextMuted(context)),
                   ),
                 ],
                 if (widget.deliveryAddress.phoneNumber?.isNotEmpty ?? false) ...[
                   SizedBox(height: 4),
                   Text(
                     widget.deliveryAddress.phoneNumber!,
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    style: TextStyle(fontSize: 12, color: AppColors.getTextMuted(context)),
                   ),
                 ],
               ],
@@ -300,9 +299,9 @@ class _CheckoutReviewScreenState extends State<CheckoutReviewScreen> {
   Widget _buildOrderItemsCard() {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.getCardBackground(context),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: AppColors.getBorder(context).withOpacity(0.3), width: 0.5),
       ),
       child: Column(
         children: [
@@ -310,17 +309,17 @@ class _CheckoutReviewScreenState extends State<CheckoutReviewScreen> {
             padding: EdgeInsets.all(14),
             child: Row(
               children: [
-                Icon(Icons.shopping_bag, color: Color(0xFFFF6B35), size: 18),
+                Icon(Icons.shopping_bag, color: AppColors.primaryOrange, size: 18),
                 SizedBox(width: 8),
                 Text(
                   'Order Items',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context)),
                 ),
                 Spacer(),
                 Container(
                   padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: Color(0xFFFF6B35).withOpacity(0.1),
+                    color: AppColors.primaryOrange.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
@@ -328,14 +327,14 @@ class _CheckoutReviewScreenState extends State<CheckoutReviewScreen> {
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.bold,
-                      color: Color(0xFFFF6B35),
+                      color: AppColors.primaryOrange,
                     ),
                   ),
                 ),
               ],
             ),
           ),
-          Divider(height: 1),
+          Divider(height: 1, color: AppColors.getBorder(context).withOpacity(0.3)),
           ListView.separated(
             shrinkWrap: true,
             physics: NeverScrollableScrollPhysics(),
@@ -361,14 +360,14 @@ class _CheckoutReviewScreenState extends State<CheckoutReviewScreen> {
           child: Container(
             width: 70,
             height: 70,
-            color: Colors.grey.shade100,
+            color: AppColors.getBackground(context),
             child: product.mainImageUrl != null
                 ? Image.network(
                     product.mainImageUrl!,
                     fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Icon(Icons.image, color: Colors.grey),
+                    errorBuilder: (_, __, ___) => Icon(Icons.image, color: AppColors.getTextMuted(context)),
                   )
-                : Icon(Icons.image, color: Colors.grey),
+                : Icon(Icons.image, color: AppColors.getTextMuted(context)),
           ),
         ),
         SizedBox(width: 12),
@@ -378,7 +377,7 @@ class _CheckoutReviewScreenState extends State<CheckoutReviewScreen> {
             children: [
               Text(
                 product.name,
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context)),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -388,10 +387,10 @@ class _CheckoutReviewScreenState extends State<CheckoutReviewScreen> {
                 runSpacing: 4,
                 children: [
                   if (item.selectedColor != null && item.selectedColor!.isNotEmpty)
-                    _buildTag(item.selectedColor!, Colors.grey[700]!),
+                    _buildTag(item.selectedColor!, AppColors.getTextMuted(context)),
                   if (item.selectedSize != null && item.selectedSize!.isNotEmpty)
-                    _buildTag(item.selectedSize!, Colors.grey[700]!),
-                  _buildTag('Qty: ${item.quantity}', Colors.grey[700]!),
+                    _buildTag(item.selectedSize!, AppColors.getTextMuted(context)),
+                  _buildTag('Qty: ${item.quantity}', AppColors.getTextMuted(context)),
                   _buildTag(
                     _getPaymentMethodLabel(paymentMethod),
                     _getPaymentMethodColor(paymentMethod),
@@ -404,7 +403,7 @@ class _CheckoutReviewScreenState extends State<CheckoutReviewScreen> {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
-                  color: Color(0xFFFF6B35),
+                  color: AppColors.primaryOrange,
                 ),
               ),
             ],
@@ -433,20 +432,20 @@ class _CheckoutReviewScreenState extends State<CheckoutReviewScreen> {
     return Container(
       padding: EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: AppColors.getCardBackground(context),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.grey.shade200),
+        border: Border.all(color: AppColors.getBorder(context).withOpacity(0.3), width: 0.5),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.receipt_long, color: Color(0xFFFF6B35), size: 18),
+              Icon(Icons.receipt_long, color: AppColors.primaryOrange, size: 18),
               SizedBox(width: 8),
               Text(
                 'Order Summary',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context)),
               ),
             ],
           ),
@@ -454,18 +453,18 @@ class _CheckoutReviewScreenState extends State<CheckoutReviewScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Subtotal', style: TextStyle(fontSize: 13, color: Colors.grey[700])),
-              Text(_formatPrice(total), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+              Text('Subtotal', style: TextStyle(fontSize: 13, color: AppColors.getTextMuted(context))),
+              Text(_formatPrice(total), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context))),
             ],
           ),
-          Divider(height: 20),
+          Divider(height: 20, color: AppColors.getBorder(context).withOpacity(0.3)),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Total', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600)),
+              Text('Total', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.getTextPrimary(context))),
               Text(
                 _formatPrice(total),
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.black87),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.getTextPrimary(context)),
               ),
             ],
           ),
@@ -502,17 +501,10 @@ class _CheckoutReviewScreenState extends State<CheckoutReviewScreen> {
   Widget _buildBottomBar(bool requiresPayment, double escrow, double total) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white, // <--- 1. BACKGROUND IS NOW WHITE
+        color: AppColors.getCardBackground(context),
         border: Border(
-          top: BorderSide(color: Colors.grey.shade200), // Subtle separation line
+          top: BorderSide(color: AppColors.getBorder(context).withOpacity(0.3)),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: Offset(0, -5),
-          ),
-        ],
       ),
       padding: EdgeInsets.fromLTRB(16, 12, 16, 12 + MediaQuery.of(context).padding.bottom),
       child: SafeArea(
@@ -528,7 +520,7 @@ class _CheckoutReviewScreenState extends State<CheckoutReviewScreen> {
                     requiresPayment ? 'Pay Now' : 'Total',
                     style: TextStyle(
                       fontSize: 12, 
-                      color: Color(0xFFFF6B35), // <--- 2. LABEL IS ORANGE
+                      color: AppColors.primaryOrange,
                       fontWeight: FontWeight.w500
                     ), 
                   ),
@@ -537,7 +529,7 @@ class _CheckoutReviewScreenState extends State<CheckoutReviewScreen> {
                     style: TextStyle(
                       fontSize: 18, 
                       fontWeight: FontWeight.bold, 
-                      color: Color(0xFFFF6B35) // <--- 2. PRICE IS ORANGE
+                      color: AppColors.primaryOrange
                     ), 
                   ),
                 ],
@@ -547,11 +539,11 @@ class _CheckoutReviewScreenState extends State<CheckoutReviewScreen> {
             ElevatedButton(
               onPressed: _proceedToPayment,
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white, // <--- 3. BUTTON BACKGROUND IS WHITE
-                foregroundColor: Color(0xFFFF6B35), // <--- BUTTON TEXT IS ORANGE
+                backgroundColor: AppColors.getCardBackground(context),
+                foregroundColor: AppColors.primaryOrange,
                 elevation: 0,
                 side: BorderSide(
-                  color: Color(0xFFFF6B35), // <--- 3. BUTTON BORDER IS ORANGE
+                  color: AppColors.primaryOrange,
                   width: 1.5
                 ),
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -566,4 +558,5 @@ class _CheckoutReviewScreenState extends State<CheckoutReviewScreen> {
         ),
       ),
     );
-  }}
+  }
+}
