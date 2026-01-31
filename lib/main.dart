@@ -5,7 +5,6 @@ import 'package:flutter_paystack/flutter_paystack.dart';
 import 'package:provider/provider.dart';
 import 'dart:async';
 import 'services/chat_service.dart';
-import 'screens/ai_chat_screen.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'services/push_notification_service.dart' as push_service;
@@ -22,6 +21,7 @@ import 'screens/cart_screen.dart';
 import 'screens/auth/account_type_selection_screen.dart';
 import 'screens/auth/login_screen.dart';
 import 'screens/auth/signup_screen.dart';
+import 'screens/video_feed_screen.dart';
 
 const supabaseUrl = 'https://owuogoooqdfbdnbkdyeo.supabase.co';
 const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im93dW9nb29vcWRmYmRuYmtkeWVvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE5Mzg2MDYsImV4cCI6MjA3NzUxNDYwNn0.g6I65rY5hhb8CnH38-7_fEsB6jPQpWy_QcqVVpIyDH8';
@@ -154,6 +154,8 @@ class _BottomNavBarState extends State<BottomNavBar> {
 
   final _pageTitles = ['Home', 'Vibe', 'My Cart', 'My Orders', 'Profile'];
 
+  String? _userState;
+
   @override
   void initState() {
     super.initState();
@@ -168,6 +170,28 @@ class _BottomNavBarState extends State<BottomNavBar> {
     _checkAuth();
     _setupAuthListener();
     _initializeNotificationsIfNeeded();
+    _loadUserState();
+  }
+
+  Future<void> _loadUserState() async {
+    try {
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
+      final userData = await supabase
+          .from('profiles')
+          .select('state')
+          .eq('id', userId)
+          .single();
+
+      if (mounted) {
+        setState(() {
+          _userState = userData['state'] as String?;
+        });
+      }
+    } catch (e) {
+      print('⚠️ Error loading user state: $e');
+    }
   }
 
   Future<void> _initializeNotificationsIfNeeded() async {
@@ -192,17 +216,17 @@ class _BottomNavBarState extends State<BottomNavBar> {
   }
 
   void _setupAuthListener() {
-  _authSubscription = supabase.auth.onAuthStateChange.listen((data) {
-    final session = data.session;
-    if (session == null && mounted) {
-      print('🚪 Auth session ended, logging out');
-      Navigator.of(context).pushNamedAndRemoveUntil(
-        '/login',  // ← CHANGED FROM /account_type
-        (route) => false,
-      );
-    }
-  });
-}
+    _authSubscription = supabase.auth.onAuthStateChange.listen((data) {
+      final session = data.session;
+      if (session == null && mounted) {
+        print('🚪 Auth session ended, logging out');
+        Navigator.of(context).pushNamedAndRemoveUntil(
+          '/login',
+          (route) => false,
+        );
+      }
+    });
+  }
 
   void _onItemTapped(int index) {
     print('🔄 ========== TAB CHANGED ==========');
@@ -315,8 +339,8 @@ class _BottomNavBarState extends State<BottomNavBar> {
                 selectedIcon: Icon(Icons.home),
                 label: 'Home'),
             NavigationDestination(
-                icon: Icon(Icons.auto_awesome_outlined),
-                selectedIcon: Icon(Icons.auto_awesome),
+                icon: Icon(Icons.play_circle_outline),
+                selectedIcon: Icon(Icons.play_circle),
                 label: 'Vibe'),
             NavigationDestination(
                 icon: Icon(Icons.shopping_cart_outlined),
@@ -341,7 +365,11 @@ class _BottomNavBarState extends State<BottomNavBar> {
       case 0:
         return HomeScreen(scrollController: _homeScrollController);
       case 1:
-        return const AiChatScreen();
+        // ✅ CRITICAL: Pass isVisible parameter to VideoFeedScreen
+        return VideoFeedScreen(
+          userState: _userState,
+          isVisible: _selectedIndex == 1, // Tell video screen when it's visible
+        );
       case 2:
         return CartScreen(
           key: ValueKey('cart_$_cartRefreshKey'),

@@ -2,13 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 
-
-/// Universal OTP Verification Screen
-/// 
-/// Can be used for: signup, login, password_reset, email_change
 class OTPVerificationScreen extends StatefulWidget {
   final String email;
-  final String otpType; // 'signup', 'login', 'password_reset', 'email_change'
+  final String otpType;
   final Function(String otp) onVerify;
   final Function() onResend;
   final String? title;
@@ -96,7 +92,6 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
       if (index < 5) {
         _focusNodes[index + 1].requestFocus();
       } else {
-        // Last digit entered - just unfocus, don't auto-verify
         _focusNodes[index].unfocus();
       }
     }
@@ -127,13 +122,30 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
     try {
       final otp = _getOTPCode();
       await widget.onVerify(otp);
-      // Success is handled by the parent widget (navigation, etc.)
     } catch (e) {
       debugPrint('❌ Verification failed: $e');
+      
       if (mounted) {
         _showErrorAnimation();
-        _showErrorSnackBar('Invalid or expired OTP. Please try again.');
-        _clearOTP();
+        
+        String errorMessage = e.toString();
+        
+        if (errorMessage.startsWith('Exception: ')) {
+          errorMessage = errorMessage.substring(11);
+        }
+        
+        if (errorMessage.contains('already registered')) {
+          _showErrorSnackBar(errorMessage);
+          
+          Future.delayed(const Duration(seconds: 3), () {
+            if (mounted) {
+              Navigator.of(context).popUntil((route) => route.isFirst);
+            }
+          });
+        } else {
+          _showErrorSnackBar(errorMessage);
+          _clearOTP();
+        }
       }
     } finally {
       if (mounted) {
@@ -297,7 +309,6 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                // Icon
                 ScaleTransition(
                   scale: _pulseAnimation,
                   child: Container(
@@ -327,7 +338,6 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
                 ),
                 const SizedBox(height: 32),
 
-                // Title
                 Text(
                   widget.title ?? _getDefaultTitle(),
                   style: const TextStyle(
@@ -338,7 +348,6 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
                 ),
                 const SizedBox(height: 12),
 
-                // Subtitle
                 Column(
                   children: [
                     Text(
@@ -363,7 +372,6 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
                 ),
                 const SizedBox(height: 48),
 
-                // OTP Input Boxes
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: List.generate(6, (index) {
@@ -372,7 +380,6 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
                 ),
                 const SizedBox(height: 32),
 
-                // Timer / Resend
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
@@ -401,7 +408,6 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
                 ),
                 const SizedBox(height: 24),
 
-                // Verify Button
                 SizedBox(
                   width: double.infinity,
                   height: 56,
@@ -441,7 +447,6 @@ class _OTPVerificationScreenState extends State<OTPVerificationScreen>
                 ),
                 const SizedBox(height: 24),
 
-                // Info Box
                 Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(

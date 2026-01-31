@@ -25,16 +25,15 @@ class EditProfileScreen extends StatefulWidget {
 }
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
-  final ProfileService _profileService = ProfileService();
+  final _profileService = ProfileService();
   final _formKey = GlobalKey<FormState>();
-
-  late TextEditingController _nameController;
-  late TextEditingController _phoneController;
-  late TextEditingController _addressLineController;
-  late TextEditingController _cityController;
-  late TextEditingController _deliveryStateController;
-  late TextEditingController _landmarkController;
-  late TextEditingController _deliveryPhoneController;
+  final _nameController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _addressController = TextEditingController();
+  final _cityController = TextEditingController();
+  final _deliveryStateController = TextEditingController();
+  final _landmarkController = TextEditingController();
+  final _deliveryPhoneController = TextEditingController();
 
   File? _imageFile;
   String? _imageUrl;
@@ -49,27 +48,17 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: widget.user.fullName);
-    _phoneController = TextEditingController(text: widget.user.phoneNumber);
+    _nameController.text = widget.user.fullName;
+    _phoneController.text = widget.user.phoneNumber ?? '';
     _imageUrl = widget.user.profileImageUrl;
     _selectedState = widget.user.state;
     _selectedUniversityId = widget.user.universityId;
 
-    _addressLineController = TextEditingController(
-      text: widget.deliveryAddress?['address_line'],
-    );
-    _cityController = TextEditingController(
-      text: widget.deliveryAddress?['city'],
-    );
-    _deliveryStateController = TextEditingController(
-      text: widget.deliveryAddress?['state'],
-    );
-    _landmarkController = TextEditingController(
-      text: widget.deliveryAddress?['landmark'],
-    );
-    _deliveryPhoneController = TextEditingController(
-      text: widget.deliveryAddress?['phone_number'],
-    );
+    _addressController.text = widget.deliveryAddress?['address_line'] ?? '';
+    _cityController.text = widget.deliveryAddress?['city'] ?? '';
+    _deliveryStateController.text = widget.deliveryAddress?['state'] ?? widget.user.state ?? '';
+    _landmarkController.text = widget.deliveryAddress?['landmark'] ?? '';
+    _deliveryPhoneController.text = widget.deliveryAddress?['phone_number'] ?? '';
 
     _loadStates();
   }
@@ -78,7 +67,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   void dispose() {
     _nameController.dispose();
     _phoneController.dispose();
-    _addressLineController.dispose();
+    _addressController.dispose();
     _cityController.dispose();
     _deliveryStateController.dispose();
     _landmarkController.dispose();
@@ -90,80 +79,54 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     setState(() => _isStatesLoading = true);
     try {
       final states = await _profileService.getStates();
-      String? correctlyCasedState;
+      String? matchedState;
 
       if (widget.user.state != null) {
         try {
-          correctlyCasedState = states.firstWhere(
-            (stateInList) =>
-                stateInList.toLowerCase() == widget.user.state!.toLowerCase(),
+          matchedState = states.firstWhere(
+            (s) => s.toLowerCase() == widget.user.state!.toLowerCase(),
           );
-        } catch (e) {
-          correctlyCasedState = null;
-        }
+        } catch (_) {}
       }
 
-      if (correctlyCasedState != null) {
-        if (mounted) {
-          setState(() {
-            _states = states;
-            _isStatesLoading = false;
-            _selectedState = correctlyCasedState;
-            _isUniversitiesLoading = true;
-          });
-        }
-        await _loadUniversities(correctlyCasedState, retainSelection: true);
-      } else {
-        if (mounted) {
-          setState(() {
-            _states = states;
-            _isStatesLoading = false;
-            _selectedState = null;
-            _isUniversitiesLoading = false;
-          });
-        }
+      setState(() {
+        _states = states;
+        _isStatesLoading = false;
+        _selectedState = matchedState;
+      });
+
+      if (matchedState != null) {
+        setState(() => _isUniversitiesLoading = true);
+        await _loadUniversities(matchedState, retainSelection: true);
       }
     } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isStatesLoading = false;
-          _isUniversitiesLoading = false;
-        });
-        _showSnackBar('Error loading states: $e', isError: true);
-      }
+      setState(() {
+        _isStatesLoading = false;
+        _isUniversitiesLoading = false;
+      });
+      _showSnackBar('Error loading states: $e', isError: true);
     }
   }
 
-  Future<void> _loadUniversities(String stateName,
-      {bool retainSelection = false}) async {
+  Future<void> _loadUniversities(String stateName, {bool retainSelection = false}) async {
     try {
-      final universities =
-          await _profileService.getUniversitiesByState(stateName);
-
+      final universities = await _profileService.getUniversitiesByState(stateName);
       String? finalUniversityId;
 
       if (retainSelection && _selectedUniversityId != null) {
         if (universities.any((uni) => uni['id'] == _selectedUniversityId)) {
           finalUniversityId = _selectedUniversityId;
-        } else {
-          finalUniversityId = null;
         }
-      } else {
-        finalUniversityId = null;
       }
 
-      if (mounted) {
-        setState(() {
-          _universities = universities;
-          _isUniversitiesLoading = false;
-          _selectedUniversityId = finalUniversityId;
-        });
-      }
+      setState(() {
+        _universities = universities;
+        _isUniversitiesLoading = false;
+        _selectedUniversityId = finalUniversityId;
+      });
     } catch (e) {
-      if (mounted) {
-        setState(() => _isUniversitiesLoading = false);
-        _showSnackBar('Error loading universities: $e', isError: true);
-      }
+      setState(() => _isUniversitiesLoading = false);
+      _showSnackBar('Error loading universities: $e', isError: true);
     }
   }
 
@@ -207,25 +170,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       await _profileService.updateProfile(
         userId: widget.user.id,
         fullName: _nameController.text.trim(),
-        phoneNumber: _phoneController.text.trim().isEmpty
-            ? null
-            : _phoneController.text.trim(),
+        phoneNumber: _phoneController.text.trim().isEmpty ? null : _phoneController.text.trim(),
         state: _selectedState,
         universityId: _selectedUniversityId,
         profileImageUrl: newImageUrl,
       );
 
-      if (_addressLineController.text.trim().isNotEmpty ||
-          _cityController.text.trim().isNotEmpty ||
-          _deliveryStateController.text.trim().isNotEmpty) {
+      if (_addressController.text.trim().isNotEmpty || _cityController.text.trim().isNotEmpty) {
         await _profileService.updateDeliveryAddress(
           userId: widget.user.id,
-          addressLine: _addressLineController.text.trim(),
+          addressLine: _addressController.text.trim(),
           city: _cityController.text.trim(),
           state: _deliveryStateController.text.trim(),
-          landmark: _landmarkController.text.trim().isEmpty
-              ? null
-              : _landmarkController.text.trim(),
+          landmark: _landmarkController.text.trim().isEmpty ? null : _landmarkController.text.trim(),
           phoneNumber: _deliveryPhoneController.text.trim(),
         );
       }
@@ -250,29 +207,36 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
       SnackBar(
         content: Row(
           children: [
-            Icon(
-              isError ? Icons.error_outline : Icons.check_circle,
-              color: Colors.white,
-            ),
+            Icon(isError ? Icons.error_outline : Icons.check_circle, color: Colors.white),
             const SizedBox(width: 12),
             Expanded(child: Text(message)),
           ],
         ),
         backgroundColor: isError ? Colors.red : const Color(0xFF10B981),
         behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }
 
   String _getInitials(String name) {
     final parts = name.trim().split(' ');
-    if (parts.length >= 2) {
-      return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
-    }
+    if (parts.length >= 2) return '${parts[0][0]}${parts[1][0]}'.toUpperCase();
     return parts.isNotEmpty ? parts[0][0].toUpperCase() : 'U';
+  }
+
+  InputDecoration _inputDecoration(String label) {
+    return InputDecoration(
+      labelText: label,
+      labelStyle: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+      border: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey.shade300)),
+      enabledBorder: UnderlineInputBorder(borderSide: BorderSide(color: Colors.grey.shade300)),
+      focusedBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Color(0xFFFF6B35), width: 2)),
+      errorBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.red)),
+      focusedErrorBorder: const UnderlineInputBorder(borderSide: BorderSide(color: Colors.red, width: 2)),
+      contentPadding: const EdgeInsets.symmetric(vertical: 12),
+      errorStyle: const TextStyle(fontSize: 12),
+    );
   }
 
   @override
@@ -283,19 +247,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         backgroundColor: Colors.white,
         elevation: 0,
         leading: IconButton(
-          icon: Icon(Icons.close, color: Colors.black),
+          icon: const Icon(Icons.close, color: Colors.black),
           onPressed: () => Navigator.pop(context),
         ),
         title: ShaderMask(
           shaderCallback: (bounds) => kOrangeGradient.createShader(bounds),
           child: const Text(
             'Edit Profile',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              letterSpacing: -0.3,
-            ),
+            style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold, letterSpacing: -0.3),
           ),
         ),
         centerTitle: true,
@@ -315,14 +274,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           else
             TextButton(
               onPressed: _saveProfile,
-              child: Text(
-                'Done',
-                style: TextStyle(
-                  color: Color(0xFFFF6B35),
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
+              child: const Text('Done', style: TextStyle(color: Color(0xFFFF6B35), fontSize: 16, fontWeight: FontWeight.w600)),
             ),
         ],
       ),
@@ -339,10 +291,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                   Container(
                     width: 90,
                     height: 90,
-                    decoration: BoxDecoration(
-                      gradient: kOrangeGradient,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
+                    decoration: BoxDecoration(gradient: kOrangeGradient, borderRadius: BorderRadius.circular(8)),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(8),
                       child: _imageFile != null
@@ -351,42 +300,21 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                               ? Image.network(
                                   _imageUrl!,
                                   fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return Center(
-                                      child: Text(
-                                        _getInitials(widget.user.fullName),
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 36,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    );
-                                  },
+                                  errorBuilder: (_, __, ___) => Center(
+                                    child: Text(_getInitials(widget.user.fullName),
+                                      style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold)),
+                                  ),
                                 )
                               : Center(
-                                  child: Text(
-                                    _getInitials(widget.user.fullName),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 36,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
+                                  child: Text(_getInitials(widget.user.fullName),
+                                    style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.bold)),
                                 ),
                     ),
                   ),
                   const SizedBox(height: 12),
                   GestureDetector(
                     onTap: _pickImage,
-                    child: Text(
-                      'Change photo',
-                      style: TextStyle(
-                        color: Color(0xFFFF6B35),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                    child: const Text('Change photo', style: TextStyle(color: Color(0xFFFF6B35), fontSize: 14, fontWeight: FontWeight.w600)),
                   ),
                 ],
               ),
@@ -394,27 +322,23 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
             const SizedBox(height: 30),
 
-            // Form Fields
+            // PROFILE INFORMATION Section
+            _buildSectionHeader('PROFILE INFORMATION'),
+            const SizedBox(height: 12),
+
             _buildTextField(
               controller: _nameController,
               label: 'Name',
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Please enter your name';
-                }
-                return null;
-              },
+              validator: (v) => v == null || v.trim().isEmpty ? 'Please enter your name' : null,
             ),
 
             _buildTextField(
               controller: _phoneController,
               label: 'Phone',
               keyboardType: TextInputType.phone,
-              validator: (value) {
-                if (value != null && value.trim().isNotEmpty) {
-                  if (value.trim().length < 10) {
-                    return 'Phone number must be at least 10 digits';
-                  }
+              validator: (v) {
+                if (v != null && v.trim().isNotEmpty && v.trim().length < 10) {
+                  return 'Phone number must be at least 10 digits';
                 }
                 return null;
               },
@@ -425,27 +349,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               value: _selectedState,
               isLoading: _isStatesLoading,
               hint: 'Select state',
-              items: _states.map((String state) {
-                return DropdownMenuItem<String>(
-                  value: state,
-                  child: Text(state),
-                );
-              }).toList(),
-              onChanged: (String? newValue) {
+              items: _states.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
+              onChanged: (newValue) {
                 if (newValue != null && newValue != _selectedState) {
                   setState(() {
                     _selectedState = newValue;
                     _universities = [];
                     _selectedUniversityId = null;
                     _isUniversitiesLoading = true;
+                    _deliveryStateController.text = newValue; // Auto-sync delivery state
                   });
                   _loadUniversities(newValue);
                 }
               },
-              validator: (value) {
-                if (value == null) return 'Required';
-                return null;
-              },
+              validator: (v) => v == null ? 'Required' : null,
             ),
 
             _buildDropdown(
@@ -453,71 +370,35 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               value: _selectedUniversityId,
               isLoading: _isUniversitiesLoading,
               isEnabled: _selectedState != null && !_isUniversitiesLoading,
-              hint: _selectedState == null
-                  ? 'Select state first'
-                  : 'Select university',
-              items: _universities.map((Map<String, dynamic> university) {
-                return DropdownMenuItem<String>(
-                  value: university['id'] as String,
-                  child: Text(university['name'] as String),
-                );
-              }).toList(),
-              onChanged: (String? newValue) {
-                setState(() => _selectedUniversityId = newValue);
-              },
-              validator: (value) {
-                if (value == null) return 'Required';
-                return null;
-              },
+              hint: _selectedState == null ? 'Select state first' : 'Select university',
+              items: _universities.map((u) => DropdownMenuItem(value: u['id'] as String, child: Text(u['name'] as String))).toList(),
+              onChanged: (v) => setState(() => _selectedUniversityId = v),
+              validator: (v) => v == null ? 'Required' : null,
             ),
 
-            const SizedBox(height: 20),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                'DELIVERY ADDRESS',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade600,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ),
+            const SizedBox(height: 30),
+
+            // DELIVERY ADDRESS Section
+            _buildSectionHeader('DELIVERY ADDRESS'),
             const SizedBox(height: 12),
 
             _buildTextField(
-              controller: _addressLineController,
-              label: 'Address Line',
-              maxLines: 2,
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Required';
-                }
-                return null;
-              },
+              controller: _deliveryStateController,
+              label: 'State',
+              validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
             ),
 
             _buildTextField(
               controller: _cityController,
               label: 'City',
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Required';
-                }
-                return null;
-              },
+              validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
             ),
 
             _buildTextField(
-              controller: _deliveryStateController,
-              label: 'State',
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Required';
-                }
-                return null;
-              },
+              controller: _addressController,
+              label: 'Address Line',
+              maxLines: 2,
+              validator: (v) => v == null || v.trim().isEmpty ? 'Required' : null,
             ),
 
             _buildTextField(
@@ -527,32 +408,19 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
             _buildTextField(
               controller: _deliveryPhoneController,
-              label: 'Delivery Phone',
+              label: 'Phone Number',
               keyboardType: TextInputType.phone,
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Required';
-                }
-                if (value.trim().length < 10) {
-                  return 'Must be at least 10 digits';
-                }
+              validator: (v) {
+                if (v == null || v.trim().isEmpty) return 'Required';
+                if (v.trim().length < 10) return 'Must be at least 10 digits';
                 return null;
               },
             ),
 
-            const SizedBox(height: 20),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text(
-                'ACCOUNT',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.grey.shade600,
-                  letterSpacing: 0.5,
-                ),
-              ),
-            ),
+            const SizedBox(height: 30),
+
+            // ACCOUNT Section
+            _buildSectionHeader('ACCOUNT'),
             const SizedBox(height: 12),
 
             Container(
@@ -563,21 +431,9 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          'Email',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
+                        Text('Email', style: TextStyle(fontSize: 14, color: Colors.grey.shade600)),
                         const SizedBox(height: 4),
-                        Text(
-                          widget.user.email,
-                          style: TextStyle(
-                            fontSize: 15,
-                            color: Colors.black87,
-                          ),
-                        ),
+                        Text(widget.user.email, style: const TextStyle(fontSize: 15, color: Colors.black87)),
                       ],
                     ),
                   ),
@@ -593,6 +449,16 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     );
   }
 
+  Widget _buildSectionHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Text(
+        title,
+        style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade600, letterSpacing: 0.5),
+      ),
+    );
+  }
+
   Widget _buildTextField({
     required TextEditingController controller,
     required String label,
@@ -602,41 +468,13 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          TextFormField(
-            controller: controller,
-            keyboardType: keyboardType,
-            maxLines: maxLines,
-            validator: validator,
-            style: const TextStyle(fontSize: 15),
-            decoration: InputDecoration(
-              labelText: label,
-              labelStyle: TextStyle(
-                fontSize: 14,
-                color: Colors.grey.shade600,
-              ),
-              border: UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.grey.shade300),
-              ),
-              enabledBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.grey.shade300),
-              ),
-              focusedBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: Color(0xFFFF6B35), width: 2),
-              ),
-              errorBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.red),
-              ),
-              focusedErrorBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.red, width: 2),
-              ),
-              contentPadding: const EdgeInsets.symmetric(vertical: 12),
-              errorStyle: TextStyle(fontSize: 12),
-            ),
-          ),
-        ],
+      child: TextFormField(
+        controller: controller,
+        keyboardType: keyboardType,
+        maxLines: maxLines,
+        validator: validator,
+        style: const TextStyle(fontSize: 15),
+        decoration: _inputDecoration(label),
       ),
     );
   }
@@ -653,55 +491,25 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          DropdownButtonFormField<String>(
-            value: value,
-            items: items,
-            onChanged: isEnabled ? onChanged : null,
-            validator: validator,
-            isExpanded: true,
-            style: const TextStyle(fontSize: 15, color: Colors.black87),
-            decoration: InputDecoration(
-              labelText: label,
-              labelStyle: TextStyle(
-                fontSize: 14,
-                color: Colors.grey.shade600,
-              ),
-              hintText: hint,
-              hintStyle: TextStyle(color: Colors.grey.shade400),
-              suffixIcon: isLoading
-                  ? Container(
-                      padding: const EdgeInsets.all(12),
-                      width: 20,
-                      height: 20,
-                      child: const CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Color(0xFFFF6B35),
-                      ),
-                    )
-                  : null,
-              border: UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.grey.shade300),
-              ),
-              enabledBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.grey.shade300),
-              ),
-              focusedBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: Color(0xFFFF6B35), width: 2),
-              ),
-              errorBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.red),
-              ),
-              focusedErrorBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.red, width: 2),
-              ),
-              contentPadding: const EdgeInsets.symmetric(vertical: 12),
-              errorStyle: TextStyle(fontSize: 12),
-            ),
-          ),
-        ],
+      child: DropdownButtonFormField<String>(
+        value: value,
+        items: items,
+        onChanged: isEnabled ? onChanged : null,
+        validator: validator,
+        isExpanded: true,
+        style: const TextStyle(fontSize: 15, color: Colors.black87),
+        decoration: _inputDecoration(label).copyWith(
+          hintText: hint,
+          hintStyle: TextStyle(color: Colors.grey.shade400),
+          suffixIcon: isLoading
+              ? Container(
+                  padding: const EdgeInsets.all(12),
+                  width: 20,
+                  height: 20,
+                  child: const CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFFF6B35)),
+                )
+              : null,
+        ),
       ),
     );
   }

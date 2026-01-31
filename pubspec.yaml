@@ -31,6 +31,17 @@ dependencies:
   flutter_animate: ^4.5.2    
   google_generative_ai: ^0.4.0
   uuid: ^4.3.3
+  video_player: ^2.8.1
+  
+  # Share & Download
+  share_plus: ^10.1.2
+  gal: ^2.3.0
+  dio: ^5.7.0
+  path_provider: ^2.1.5
+  permission_handler: ^11.3.0
+  
+  # Video Processing - WATERMARK
+  ffmpeg_kit_flutter_full: ^6.0.3
   
   # Storage
   shared_preferences: ^2.2.2
@@ -75,7 +86,7 @@ flutter_launcher_icons:
   image_path: "assets/images/unihub_logo.png"
   adaptive_icon_background: "#FF6B35"
   adaptive_icon_foreground: "assets/images/unihub_logo.png"
-  adaptive_icon_foreground_inset: 5  # Minimal padding - your logo already has space
+  adaptive_icon_foreground_inset: 5
   remove_alpha_ios: true
   min_sdk_android: 21 
 

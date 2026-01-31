@@ -22,7 +22,7 @@ android {
 
     defaultConfig {
         applicationId = "com.example.unihub"
-        minSdk = flutter.minSdkVersion
+        minSdk = 24  // ✅ Required for FFmpeg
         targetSdk = 34
         versionCode = 1
         versionName = "1.0.0"

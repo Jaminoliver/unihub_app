@@ -147,7 +147,6 @@ class _SignUpScreenState extends State<SignUpScreen>
     super.dispose();
   }
 
-  /// NEW: Handle signup with OTP flow
   Future<void> _handleSignUp() async {
     if (!_formKey.currentState!.validate()) {
       _showErrorAnimation();
@@ -172,13 +171,11 @@ class _SignUpScreenState extends State<SignUpScreen>
     try {
       final email = _emailController.text.trim();
 
-      // Step 1: Send OTP
       await _authService.sendSignupOTP(email);
 
       if (mounted) {
         setState(() => _isLoading = false);
 
-        // Step 2: Navigate to OTP screen
         final dbState = _stateMapping[_selectedState!] ?? _selectedState!;
 
         Navigator.of(context).push(
@@ -188,31 +185,44 @@ class _SignUpScreenState extends State<SignUpScreen>
               otpType: 'signup',
               title: 'Verify Your Email',
               subtitle: 'Enter the code we sent to',
-             onVerify: (otp) async {
-  // Step 3: Verify OTP and create account
-  await _authService.verifySignupOTP(
-    email: email,
-    otp: otp,
-    password: _passwordController.text,
-    fullName: _fullNameController.text.trim(),
-    phoneNumber: _phoneController.text.trim(),
-    universityId: _selectedUniversityId!,
-    state: dbState,
-    deliveryAddress: _addressController.text.trim(),
-  );
+              onVerify: (otp) async {
+                try {
+                  await _authService.verifySignupOTP(
+                    email: email,
+                    otp: otp,
+                    password: _passwordController.text,
+                    fullName: _fullNameController.text.trim(),
+                    phoneNumber: _phoneController.text.trim(),
+                    universityId: _selectedUniversityId!,
+                    state: dbState,
+                    deliveryAddress: _addressController.text.trim(),
+                  );
 
-  if (mounted) {
-    // Navigate to Welcome Animation Screen
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(
-        builder: (_) => WelcomeAnimationScreen(
-          userName: _fullNameController.text.trim(),
-        ),
-      ),
-      (route) => false,
-    );
-  }
-},
+                  if (mounted) {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(
+                        builder: (_) => WelcomeAnimationScreen(
+                          userName: _fullNameController.text.trim(),
+                        ),
+                      ),
+                      (route) => false,
+                    );
+                  }
+                } catch (e) {
+                  final errorMessage = e.toString().toLowerCase();
+                  
+                  if (errorMessage.contains('user already registered') || 
+                      errorMessage.contains('already exists')) {
+                    throw Exception('This email is already registered. Please login instead.');
+                  } else if (errorMessage.contains('invalid') || 
+                             errorMessage.contains('expired') || 
+                             errorMessage.contains('otp')) {
+                    throw Exception('Invalid or expired OTP. Please try again.');
+                  } else {
+                    throw Exception('Signup failed: ${e.toString()}');
+                  }
+                }
+              },
               onResend: () async {
                 await _otpService.resendOTP(
                   email: email,
@@ -409,7 +419,6 @@ class _SignUpScreenState extends State<SignUpScreen>
                   ),
                   const SizedBox(height: 16),
 
-                  // State Dropdown
                   DropdownButtonFormField<String>(
                     value: _selectedState,
                     decoration: InputDecoration(
@@ -470,7 +479,6 @@ class _SignUpScreenState extends State<SignUpScreen>
                   ),
                   const SizedBox(height: 16),
 
-                  // University Dropdown
                   DropdownButtonFormField<String>(
                     value: _selectedUniversityId,
                     decoration: InputDecoration(
@@ -869,55 +877,46 @@ class _SuccessDialogState extends State<_SuccessDialog> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ScaleTransition(
-              scale: CurvedAnimation(
-                parent: widget.controller,
-                curve: Curves.elasticOut,
-              ),
-              child: Container(
-                width: 80,
-                height: 80,
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Color(0xFF10B981), Color(0xFF059669)],
-                  ),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.check,
-                  color: Colors.white,
-                  size: 48,
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            FadeTransition(
-              opacity: widget.controller,
-              child: const Column(
-                children: [
-                  Text(
-                    'Account Created!',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1A1A1A),
+                        ScaleTransition(
+                          scale: CurvedAnimation(
+                            parent: widget.controller,
+                            curve: Curves.elasticOut,
+                          ),
+                          child: Container(
+                            width: 80,
+                            height: 80,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFF10B981),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.check,
+                              color: Colors.white,
+                              size: 40,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 24),
+                        const Text(
+                          'Account Created!',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1A1A1A),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'Your account has been successfully created.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Color(0xFF6B7280),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  SizedBox(height: 8),
-                  Text(
-                    'Welcome to UniHub!',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Color(0xFF6B7280),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
+                );
+              }
+            }
